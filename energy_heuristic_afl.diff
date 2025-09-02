@@ -35,9 +35,9 @@ index c46abade..7eb424c9 100644
 +  afl->energy_map = shmat(shmkey, NULL, 0);
 +  if (afl->energy_map == (void *)-1) PFATAL("shmat for energy_map failed");
 +
-+  char shm_str[32];
-+  snprintf(shm_str, sizeof(shm_str), "%d", shmkey);
-+  setenv("AFL_ENERGY_SHM_ID", shm_str, 1);
++  char energy_shm_str[32];
++  snprintf(energy_shm_str, sizeof(energy_shm_str), "%d", shmkey);
++  setenv("AFL_ENERGY_SHM_ID", energy_shm_str, 1);
 +
  }
  
