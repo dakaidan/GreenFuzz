@@ -1,59 +1,72 @@
 diff --git a/include/afl-fuzz.h b/include/afl-fuzz.h
-index 01306cff..991bd14a 100644
+index 01306cff..313f49d1 100644
 --- a/include/afl-fuzz.h
 +++ b/include/afl-fuzz.h
-@@ -250,6 +250,8 @@ struct queue_entry {
+@@ -250,6 +250,9 @@ struct queue_entry {
    double perf_score,                    /* performance score                */
        weight;
  
-+  u64 energy_cost;                       /* power usage score                */
++  u64 cpu_energy_cost;                   /* power usage score for cpu        */
++  u64 mem_energy_cost;                  /* power usage score for memory      */
 +
    struct queue_entry *mother;            /* queue entry this based on        */
    u8                 *trace_mini;        /* Trace bytes, if kept             */
    u8                 *testcase_buf;      /* The testcase buffer, if loaded.  */
-@@ -508,6 +510,8 @@ typedef struct afl_state {
+@@ -508,6 +511,9 @@ typedef struct afl_state {
    sharedmem_t     *shm_fuzz;
    afl_env_vars_t   afl_env;
  
-+  void *energy_map;                                       /* energy map shm */
++  void *cpu_energy_map;                                       /* cpu energy map shm */
++  void *mem_energy_map;                                      /* mem energy map shm */
 +
    char **argv;                                            /* argv if needed */
  
    /* MOpt:
 diff --git a/src/afl-fuzz-init.c b/src/afl-fuzz-init.c
-index c46abade..7eb424c9 100644
+index c46abade..8f896c26 100644
 --- a/src/afl-fuzz-init.c
 +++ b/src/afl-fuzz-init.c
-@@ -2995,6 +2995,17 @@ void setup_testcase_shmem(afl_state_t *afl) {
+@@ -2995,6 +2995,27 @@ void setup_testcase_shmem(afl_state_t *afl) {
    afl->fsrv.shmem_fuzz_len = (u32 *)map;
    afl->fsrv.shmem_fuzz = map + sizeof(u32);
  
 +  // setup energy map shm
-+  key_t shmkey = shmget(IPC_PRIVATE, sizeof(u64), IPC_CREAT | IPC_EXCL | 0600);
-+  if (shmkey < 0) PFATAL("shmget for energy_map failed");
++  key_t cpu_shmkey = shmget(IPC_PRIVATE, sizeof(u64), IPC_CREAT | IPC_EXCL | 0600);
++  if (cpu_shmkey < 0) PFATAL("shmget for cpu_energy_map failed");
 +
-+  afl->energy_map = shmat(shmkey, NULL, 0);
-+  if (afl->energy_map == (void *)-1) PFATAL("shmat for energy_map failed");
++  afl->cpu_energy_map = shmat(cpu_shmkey, NULL, 0);
++  if (afl->cpu_energy_map == (void *)-1) PFATAL("shmat for cpu_energy_map failed");
 +
-+  char energy_shm_str[32];
-+  snprintf(energy_shm_str, sizeof(energy_shm_str), "%d", shmkey);
-+  setenv("AFL_ENERGY_SHM_ID", energy_shm_str, 1);
++  char cpu_energy_shm_str[32];
++  snprintf(cpu_energy_shm_str, sizeof(cpu_energy_shm_str), "%d", cpu_shmkey);
++  setenv("AFL_CPU_ENERGY_SHM_ID", cpu_energy_shm_str, 1);
++
++  key_t mem_shmkey = shmget(IPC_PRIVATE, sizeof(u64), IPC_CREAT | IPC_EXCL | 0600);
++  if (mem_shmkey < 0) PFATAL("shmget for mem_energy_map failed");
++
++  afl->mem_energy_map = shmat(mem_shmkey, NULL, 0);
++  if (afl->mem_energy_map == (void *)-1) PFATAL("shmat for mem_energy_map failed");
++
++  char mem_energy_shm_str[32];
++  snprintf(mem_energy_shm_str, sizeof(mem_energy_shm_str), "%d", mem_shmkey);
++  setenv("AFL_MEM_ENERGY_SHM_ID", mem_energy_shm_str, 1);
 +
  }
  
  /* Do a PATH search and find target binary to see that it exists and
 diff --git a/src/afl-fuzz-queue.c b/src/afl-fuzz-queue.c
-index fede66b8..7aeb83f5 100644
+index fede66b8..326afca3 100644
 --- a/src/afl-fuzz-queue.c
 +++ b/src/afl-fuzz-queue.c
-@@ -1475,6 +1475,14 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
+@@ -1475,6 +1475,15 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
  
    }
  
 +  /* --- BEGIN ENERGY HEURISTIC --- */
-+  if (q->energy_cost > 0) {
-+    perf_score = (u32)(((u64)perf_score * 1000ULL) / q->energy_cost); // normalise the perf w.r.t energy cost
-+    // perf_score = (u32)(alpha * perf_score - beta * q->energy_cost); // weighted combination of the perf and energy cost
++  u64 energy_cost = q->cpu_energy_cost + q->mem_energy_cost;
++  if (energy_cost > 0) {
++    perf_score = (u32)(((u64)perf_score * 1000ULL) / energy_cost); // normalise the perf w.r.t energy cost
++    // perf_score = (u32)(alpha * perf_score - beta * energy_cost); // weighted combination of the perf and energy cost
 +    perf_score += 1;  // ensure that we always have at least 1 to avoid skips
 +  }
 +  /* --- END ENERGY HEURISTIC --- */
@@ -62,21 +75,30 @@ index fede66b8..7aeb83f5 100644
  
  }
 diff --git a/src/afl-fuzz-run.c b/src/afl-fuzz-run.c
-index db54eb58..b1a514de 100644
+index db54eb58..071d377d 100644
 --- a/src/afl-fuzz-run.c
 +++ b/src/afl-fuzz-run.c
-@@ -107,6 +107,18 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
+@@ -107,6 +107,27 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
    time_spent_start = (spec.tv_sec * 1000000000) + spec.tv_nsec;
  #endif
  
 +  /* --- BEGIN ENERGY MEASUREMENT HOOK --- */
 +  {
-+    if (afl->energy_map) {
-+      u64 val = *((volatile u64 *)afl->energy_map);
++    if (afl->cpu_energy_map) {
++      u64 val = *((volatile u64 *)afl->cpu_energy_map);
 +      if (val > 0 && afl->queue_cur) {
-+        afl->queue_cur->energy_cost = val;
++        afl->queue_cur->cpu_energy_cost = val;
 +      }
-+      *((volatile u64 *)afl->energy_map) = 0;
++      *((volatile u64 *)afl->cpu_energy_map) = 0;
++    }
++  }
++  {
++    if (afl->mem_energy_map) {
++      u64 val = *((volatile u64 *)afl->mem_energy_map);
++      if (val > 0 && afl->queue_cur) {
++        afl->queue_cur->mem_energy_cost = val;
++      }
++      *((volatile u64 *)afl->mem_energy_map) = 0;
 +    }
 +  }
 +  /* --- END ENERGY MEASUREMENT HOOK --- */
