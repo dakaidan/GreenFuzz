@@ -1,9 +1,13 @@
 #include <cstdio>
 #include <cppJoules.h>
+#include <cinttypes>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/shm.h>
 #include <stdint.h>
+#include <sstream>
+#include <iostream>
+#include <string>
 
 static volatile uint64_t *energy_map = NULL;
 
