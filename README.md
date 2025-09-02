@@ -9,7 +9,7 @@ Create diffs for updates to afl:
 git diff HEAD~1 HEAD > ../diff_name.diff 
  ```
 
-Will create a diff of the latest commit,, if you want to do more than one commit, you can get the commit hashes with `git log` and do:
+Will create a diff of the latest commit, if you want to do more than one commit, you can get the commit hashes with `git log` and do:
 ```bash
 git diff <commit-hash-1> <commit-hash-2> > ../diff_name.diff 
 ```
