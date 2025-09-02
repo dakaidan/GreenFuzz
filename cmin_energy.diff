@@ -1,0 +1,248 @@
+diff --git a/docs/Changelog.md b/docs/Changelog.md
+index bbca15c2..cd500ecb 100644
+--- a/docs/Changelog.md
++++ b/docs/Changelog.md
+@@ -6,6 +6,7 @@
+ 
+ ### Version ++4.34a (dev)
+   - afl-fuzz
++    - larger improvements to CMPLOG, thanks to @am009
+     - scroll down before clearing the screen to not loose content
+     - minor bug fixes
+   - afl-showmap
+diff --git a/include/cmplog.h b/include/cmplog.h
+index e45b1092..604dbf0a 100644
+--- a/include/cmplog.h
++++ b/include/cmplog.h
+@@ -41,6 +41,10 @@
+ #define CMP_TYPE_INS 0
+ #define CMP_TYPE_RTN 1
+ 
++#define ADDR_ATTR_COMBINE(v0attr, v1attr) ((v0attr & 3) + ((v1attr & 3) << 2))
++#define ADDR_ATTR_V0(x) (x & 3)
++#define ADDR_ATTR_V1(x) ((x >> 2) & 3)
++
+ struct cmp_header {  // 16 bit = 2 bytes
+ 
+   unsigned hits : 6;       // up to 63 entries, we have CMP_MAP_H = 32
+@@ -70,7 +74,8 @@ struct cmpfn_operands {
+   u8 v1[32];
+   u8 v0_len;
+   u8 v1_len;
+-  u8 unused[6];  // 2 bits could be used for "is constant operand"
++  u8 addr_attr;
++  u8 unused[5];  // 2 bits could be used for "is constant operand"
+ 
+ } __attribute__((packed));
+ 
+@@ -88,5 +93,14 @@ struct cmp_map {
+ struct afl_forkserver;
+ void cmplog_exec_child(struct afl_forkserver *fsrv, char **argv);
+ 
++// Attribute of whether the Buffer points to the memory area mapped by ELF
++enum {
++
++  ADDR_ATTR_NOTFOUND = 0,
++  ADDR_ATTR_RO = 1,
++  ADDR_ATTR_RW = 2,
++
++};
++
+ #endif
+ 
+diff --git a/instrumentation/afl-compiler-rt.o.c b/instrumentation/afl-compiler-rt.o.c
+index 4770e4d9..59b5b43b 100644
+--- a/instrumentation/afl-compiler-rt.o.c
++++ b/instrumentation/afl-compiler-rt.o.c
+@@ -13,6 +13,13 @@
+ 
+ */
+ 
++#ifdef __linux__
++  #ifndef _GNU_SOURCE
++    #define _GNU_SOURCE
++  #endif
++  #include <link.h>
++#endif
++
+ #ifdef __AFL_CODE_COVERAGE
+   #ifndef _GNU_SOURCE
+     #define _GNU_SOURCE
+@@ -2400,6 +2407,48 @@ static int area_is_valid(void *ptr, size_t len) {
+ 
+ }
+ 
++/* Attribute of whether the Buffer points to the memory area mapped by ELF */
++
++#ifdef __linux__
++
++// From
++// https://github.com/google/honggfuzz/blob/ded8c87bcf3cc32f64c1097746a3461d6da1c24a/libhfcommon/util.c#L963
++static int addr_static_cb(struct dl_phdr_info *info, size_t size, void *data) {
++
++  for (size_t i = 0; i < info->dlpi_phnum; i++) {
++
++    if (info->dlpi_phdr[i].p_type != PT_LOAD) { continue; }
++    uintptr_t addr_start = info->dlpi_addr + info->dlpi_phdr[i].p_vaddr;
++    uintptr_t addr_end = addr_start + MIN(info->dlpi_phdr[i].p_memsz,
++                                          info->dlpi_phdr[i].p_filesz);
++    if (((uintptr_t)data >= addr_start) && ((uintptr_t)data < addr_end)) {
++
++      if ((info->dlpi_phdr[i].p_flags & PF_W) == 0) {
++
++        return ADDR_ATTR_RO;
++
++      } else {
++
++        return ADDR_ATTR_RW;
++
++      }
++
++    }
++
++  }
++
++  return ADDR_ATTR_NOTFOUND;
++
++}
++
++static u8 get_prog_addr_attr(const void *addr) {
++
++  return dl_iterate_phdr(addr_static_cb, (void *)addr);
++
++}
++
++#endif
++
+ /* hook for string with length functions, eg. strncmp, strncasecmp etc.
+    Note that we ignore the len parameter and take longer strings if present. */
+ void __cmplog_rtn_hook_strn(u8 *ptr1, u8 *ptr2, u64 len) {
+@@ -2456,9 +2505,14 @@ void __cmplog_rtn_hook_strn(u8 *ptr1, u8 *ptr2, u64 len) {
+ 
+   cmpfn[hits].v0_len = 0x80 + l;
+   cmpfn[hits].v1_len = 0x80 + l;
+-  __builtin_memcpy(cmpfn[hits].v0, ptr1, len1);
+-  __builtin_memcpy(cmpfn[hits].v1, ptr2, len2);
+-  // fprintf(stderr, "RTN3\n");
++  __builtin_memcpy(cmpfn[hits].v0, ptr1, 32);
++  __builtin_memcpy(cmpfn[hits].v1, ptr2, 32);
++// fprintf(stderr, "RTN3\n");
++#ifdef __linux__
++  u8 attr1 = get_prog_addr_attr(ptr1);
++  u8 attr2 = get_prog_addr_attr(ptr2);
++  cmpfn->addr_attr = ADDR_ATTR_COMBINE(attr1, attr2);
++#endif
+ 
+ }
+ 
+@@ -2510,9 +2564,14 @@ void __cmplog_rtn_hook_str(u8 *ptr1, u8 *ptr2) {
+ 
+   cmpfn[hits].v0_len = 0x80 + len1;
+   cmpfn[hits].v1_len = 0x80 + len2;
+-  __builtin_memcpy(cmpfn[hits].v0, ptr1, len1);
+-  __builtin_memcpy(cmpfn[hits].v1, ptr2, len2);
+-  // fprintf(stderr, "RTN3\n");
++  __builtin_memcpy(cmpfn[hits].v0, ptr1, 32);
++  __builtin_memcpy(cmpfn[hits].v1, ptr2, 32);
++// fprintf(stderr, "RTN3\n");
++#ifdef __linux__
++  u8 attr1 = get_prog_addr_attr(ptr1);
++  u8 attr2 = get_prog_addr_attr(ptr2);
++  cmpfn->addr_attr = ADDR_ATTR_COMBINE(attr1, attr2);
++#endif
+ 
+ }
+ 
+@@ -2569,9 +2628,14 @@ void __cmplog_rtn_hook(u8 *ptr1, u8 *ptr2) {
+ 
+   cmpfn[hits].v0_len = len;
+   cmpfn[hits].v1_len = len;
+-  __builtin_memcpy(cmpfn[hits].v0, ptr1, len);
+-  __builtin_memcpy(cmpfn[hits].v1, ptr2, len);
+-  // fprintf(stderr, "RTN3\n");
++  __builtin_memcpy(cmpfn[hits].v0, ptr1, 32);
++  __builtin_memcpy(cmpfn[hits].v1, ptr2, 32);
++// fprintf(stderr, "RTN3\n");
++#ifdef __linux__
++  u8 attr1 = get_prog_addr_attr(ptr1);
++  u8 attr2 = get_prog_addr_attr(ptr2);
++  cmpfn->addr_attr = ADDR_ATTR_COMBINE(attr1, attr2);
++#endif
+ 
+ }
+ 
+@@ -2637,9 +2701,15 @@ void __cmplog_rtn_hook_n(u8 *ptr1, u8 *ptr2, u64 len) {
+ 
+   cmpfn[hits].v0_len = l;
+   cmpfn[hits].v1_len = l;
+-  __builtin_memcpy(cmpfn[hits].v0, ptr1, l);
+-  __builtin_memcpy(cmpfn[hits].v1, ptr2, l);
++  __builtin_memcpy(cmpfn[hits].v0, ptr1, 32);
++  __builtin_memcpy(cmpfn[hits].v1, ptr2, 32);
+   // fprintf(stderr, "RTN3\n");
++  #ifdef __linux__
++  u8 attr1 = get_prog_addr_attr(ptr1);
++  u8 attr2 = get_prog_addr_attr(ptr2);
++  cmpfn->addr_attr = ADDR_ATTR_COMBINE(attr1, attr2);
++  #endif
++
+ #endif
+ 
+ }
+diff --git a/src/afl-cc.c b/src/afl-cc.c
+index fcf62301..dc16d083 100644
+--- a/src/afl-cc.c
++++ b/src/afl-cc.c
+@@ -2705,6 +2705,7 @@ void add_misc_params(aflcc_state_t *aflcc) {
+     insert_param(aflcc, "-gno-record-command-line");
+ 
+   }
++
+ #endif
+ 
+ }
+diff --git a/src/afl-fuzz-redqueen.c b/src/afl-fuzz-redqueen.c
+index 5703ebd1..e7184068 100644
+--- a/src/afl-fuzz-redqueen.c
++++ b/src/afl-fuzz-redqueen.c
+@@ -2903,15 +2903,34 @@ static u8 rtn_fuzz(afl_state_t *afl, u32 key, u8 *orig_buf, u8 *buf, u8 *cbuf,
+       // shape_len), check_if_text_buf((u8 *)&o->v1, shape_len), v0_len,
+       // o->v0, v1_len, o->v1);
+ 
+-      // Note that this check differs from the line 1901, for RTN we are more
+-      // opportunistic for adding to the dictionary than cmps
+-      if (!memcmp(o->v0, orig_o->v0, v0_len) ||
+-          (!found_one || check_if_text_buf((u8 *)&o->v0, v0_len) == v0_len))
++      if (!memcmp(o->v0, orig_o->v0, v0_len) &&
++          ADDR_ATTR_V0(o->addr_attr) != ADDR_ATTR_NOTFOUND &&
++          ADDR_ATTR_V0(orig_o->addr_attr) != ADDR_ATTR_NOTFOUND) {
++
+         maybe_add_auto(afl, o->v0, v0_len);
+-      if (!memcmp(o->v1, orig_o->v1, v1_len) ||
+-          (!found_one || check_if_text_buf((u8 *)&o->v1, v1_len) == v1_len))
++
++      } else if (!memcmp(o->v1, orig_o->v1, v1_len) &&
++
++                 ADDR_ATTR_V1(o->addr_attr) != ADDR_ATTR_NOTFOUND &&
++                 ADDR_ATTR_V1(orig_o->addr_attr) != ADDR_ATTR_NOTFOUND) {
++
+         maybe_add_auto(afl, o->v1, v1_len);
+ 
++      } else {
++
++        // Note that this check differs from the line 1901, for RTN we are more
++        // opportunistic for adding to the dictionary than cmps
++        if (!memcmp(o->v0, orig_o->v0, v0_len) &&
++            (!found_one || check_if_text_buf((u8 *)&o->v0, v0_len) == v0_len) &&
++            v0_len != 32)
++          maybe_add_auto(afl, o->v0, v0_len);
++        if (!memcmp(o->v1, orig_o->v1, v1_len) &&
++            (!found_one || check_if_text_buf((u8 *)&o->v1, v1_len) == v1_len) &&
++            v1_len != 32)
++          maybe_add_auto(afl, o->v1, v1_len);
++
++      }
++
+       //}
+ 
+     }
