@@ -7,6 +7,7 @@
 #include <string>
 #include <dlfcn.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #ifdef AFL_ENERGY_MAPPING
 static volatile uint64_t *cpu_energy_map = nullptr;
@@ -43,21 +44,23 @@ void afl_set_energy_score(const uint64_t cpu_val, const uint64_t mem_val) {
 }
 #endif
 
+#ifdef AFL_FORCE_PRINT
+static void reopen_stdout() {
+    int fd = open("/dev/tty", O_WRONLY);
+    if (fd != -1) {
+        dup2(fd, STDOUT_FILENO);
+        close(fd);
+    }
+    fflush(stdout);
+}
+#endif
 
 static EnergyTracker* tracker = nullptr;
 
-__attribute__((constructor))
-static void preload_init() {
-    fprintf(stderr, "[preload] Before main()\n");
-    #ifndef AFL_ENERGY_MAPPING
-    fprintf(stderr, "[preload] AFL_ENERGY_MAPPING not defined, will not set energy score\n");
-    #endif
-
-    tracker = new EnergyTracker();
-    tracker->start();
-}
-
 static void run_cleanup() {
+    #ifdef AFL_FORCE_PRINT
+    reopen_stdout();
+    #endif
     fprintf(stderr, "[preload] After main()\n");
 
     if (tracker) {
@@ -112,6 +115,17 @@ static void run_cleanup() {
         delete tracker;
         tracker = nullptr;
     }
+}
+
+__attribute__((constructor))
+static void preload_init() {
+    fprintf(stderr, "[preload] Before main()\n");
+    #ifndef AFL_ENERGY_MAPPING
+    fprintf(stderr, "[preload] AFL_ENERGY_MAPPING not defined, will not set energy score\n");
+    #endif
+
+    tracker = new EnergyTracker();
+    tracker->start();
 }
 
 __attribute__((destructor))
