@@ -16,6 +16,10 @@ $(PRELOAD_LIB):
 
 preload: $(PRELOAD_LIB)
 
+preload_afl:
+	g++ -Wall -O2 -fPIC -DAFL_ENERGY_MAPPING -shared -o energy.so energy_preload.cpp -lCPP_Joules
+
 clean:
 	rm -f $(PRELOAD_LIB)
+
 
