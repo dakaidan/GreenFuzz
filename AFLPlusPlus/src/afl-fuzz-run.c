@@ -108,6 +108,9 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
 #endif
 
   /* --- BEGIN ENERGY MEASUREMENT HOOK --- */
+  #ifdef AFL_ENERGY_MAPPING_DEBUG
+  assert(afl->cpu_energy_map != NULL || afl->mem_energy_map != NULL);
+  #endif
   {
     if (afl->cpu_energy_map) {
       u64 val = *((volatile u64 *)afl->cpu_energy_map);

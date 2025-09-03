@@ -5,7 +5,8 @@
 #include <sstream>
 #include <iostream>
 #include <string>
-
+#include <dlfcn.h>
+#include <unistd.h>
 
 #ifdef AFL_ENERGY_MAPPING
 static volatile uint64_t *cpu_energy_map = nullptr;
@@ -56,8 +57,7 @@ static void preload_init() {
     tracker->start();
 }
 
-__attribute__((destructor))
-static void preload_fini() {
+static void run_cleanup() {
     fprintf(stderr, "[preload] After main()\n");
 
     if (tracker) {
@@ -112,6 +112,35 @@ static void preload_fini() {
         delete tracker;
         tracker = nullptr;
     }
+}
+
+__attribute__((destructor))
+static void preload_fini() {
+    run_cleanup();
+}
+
+extern "C" void exit(int status) {
+    static void (*real_exit)(int) = nullptr;
+    if (!real_exit) real_exit = (void (*)(int))dlsym(RTLD_NEXT, "exit");
+
+    run_cleanup();
+    real_exit(status);
+}
+
+extern "C" void _exit(int status) {
+    static void (*real__exit)(int) = nullptr;
+    if (!real__exit) real__exit = (void (*)(int))dlsym(RTLD_NEXT, "_exit");
+
+    run_cleanup();
+    real__exit(status);
+}
+
+extern "C" void _Exit(int status) {
+    static void (*real__Exit)(int) = nullptr;
+    if (!real__Exit) real__Exit = (void (*)(int))dlsym(RTLD_NEXT, "_Exit");
+
+    run_cleanup();
+    real__Exit(status);
 }
 
 

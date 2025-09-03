@@ -5,7 +5,6 @@ LDFLAGS  ?= -shared
 CPPJOULES_INC ?=           
 CPPJOULES_LIB ?= -lCPP_Joules  
 
-PROGRAMS := hello          
 PRELOAD_LIB := energy.so
 PRELOAD_SRC := energy_preload.cpp
 
