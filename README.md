@@ -1,27 +1,178 @@
-# GreenFuzz
+# GreenAFL
 
-Apply the energy_heuristic_afl.diff to the AFL++ submodule before building.
+**GreenAFL** is a modified version of AFLPlusPlus that integrates energy measurement into program execution. It allows users to measure energy consumption of target programs, either directly or during fuzzing with AFL.
 
-When running the Fuzzer we need to insert the energy preload library also with `AFL_PRELOAD`.
+---
 
-Create diffs for updates to afl:
+## Table of Contents
+
+1. Project Structure
+2. Dependencies
+3. Build Instructions
+4. Using the Preload Library
+5. Testing
+6. AFLPlusPlus Integration
+7. Cleaning the Build
+8. Notes on Modifications
+
+---
+
+## Project Structure
 ```bash
-git diff HEAD~1 HEAD > ../diff_name.diff 
- ```
-
-Will create a diff of the latest commit, if you want to do more than one commit, you can get the commit hashes with `git log` and do:
-```bash
-git diff <commit-hash-1> <commit-hash-2> > ../diff_name.diff 
+.
+├── AFLPlusPlus              # Local AFLPlusPlus clone/build
+├── LICENSE
+├── Makefile
+├── README.md
+└── src
+├── preload
+│   └── energy_preload.cpp   # Preload library to measure energy
+└── tests
+    └── hello.cpp            # Example test program
 ```
 
-To apply the diff:
-```bash
-git apply ../diff_name.diff
-```
+- `AFLPlusPlus/`: Directory for the AFL++ fuzzer. This project includes a customized AFLPlusPlus build.
+- `src/preload/`: Contains energy_preload.cpp, the preload library measuring energy usage.
+- `src/tests/`: Example test programs that can be compiled and run with the preload library.
+- `build/`: Build artifacts are generated here, including the compiled preload library and test binaries.
 
-## CPPJoules
+---
 
-To install:
+## Dependencies
+
+- `GCC`/`G++` newer than 11.0
+- `Make`
+- `CPPJoules` (linked in the preload library)
+
+To install `CPPJoules` follow instructions [here](https://rishalab.github.io/CPPJoules/), or use the following commands on Ubuntu:
+
 ```bash
 curl https://raw.githubusercontent.com/rishalab/CPPJoules/main/installer.sh | bash
+source ~/.bashrc
 ```
+
+---
+
+## Build Instructions
+
+GreenAFL uses a Makefile to build both the preload library and test binaries.
+
+### Build Everything
+
+```bash
+make
+```
+
+This will:
+
+1. Build the energy measurement preload library (`build/energy.so`).
+2. Compile all test programs in `src/tests/` into `build/tests/`.
+3. Build a local AFLPlusPlus instance in `AFLPlusPlus/`.
+
+### Build Preload Library Only
+
+```bash
+make preload
+```
+
+### Build Preload Library with AFL Integration
+
+```bash
+make preload_afl
+```
+
+Adds `-DAFL_ENERGY_MAPPING` to the build, enabling energy tracking in AFL fuzzing runs.
+
+### Build Preload Library with Forced Print
+
+```bash
+make preload_print
+```
+
+Adds `-DAFL_FORCE_PRINT` to the build, enabling output of energy measurements, even when within AFL (required for cmin)
+
+### Combined: AFL + Print
+
+```bash 
+make preload_print_afl
+```
+
+Enables both AFL energy tracking and forced printing.
+
+---
+
+## Using the Preload Library
+
+The preload library can be used in two modes:
+
+### Direct Execution
+
+```bash
+LD_PRELOAD=/path/to/build/energy.so ./build/tests/hello
+```
+
+This runs the program with energy measurement.
+
+### AFL Fuzzing
+
+```bash
+AFL_PRELOAD=/path/to/build/energy.so afl-prog ...
+```
+
+This injects the energy measurement library into programs being fuzzed.
+
+---
+
+## Testing
+
+All tests in `src/tests/` are automatically compiled during make all.
+
+Example:
+
+```bash
+./build/tests/hello
+```   
+
+- `.cpp` and `.c` test sources are supported.
+- Build artifacts are placed in build/tests/.
+
+---
+
+## AFLPlusPlus Integration
+
+GreenAFL comes with a local copy of AFLPlusPlus, which is built automatically:
+
+```bash
+make afl
+```
+
+This builds AFL in the `AFLPlusPlus/llvm_mode` and `AFLPlusPlus/qemu_mode` directories depending on the chosen build options.
+
+---
+
+## Cleaning the Build
+
+Remove all compiled artifacts:
+
+```bash
+make clean
+```
+
+- Deletes the `build/` directory entirely.
+- Does not affect AFLPlusPlus or source files.
+
+---
+
+## Notes on Modifications
+
+GreenAFL modifies AFLPlusPlus to integrate with the energy measurement preload library. Key features:
+
+- Seed Minimisation with energy tracking.
+  - Edits to `AFLPlusPlus/afl-cmin.py` to support energy measurement during minimisation.
+  - Requires `-DAFL_FORCE_PRINT` to ensure energy data is output during minimisation.
+- Fuzzing with energy tracking.
+  - Edits to `AFLPlusPlus/include/afl-fuzz.h` to add maps for child process to write to, and to store energy data in each fuzzing iteration.
+  - Edits to `AFLPlusPlus/src/afl-fuzz-init.c` to initialise the new maps, and set the env variable for the preload library.
+  - Edits to `AFLPlusPlus/src/afl-fuzz-run.c` to read energy data from the maps after each execution, and store it in the fuzzing queue entry.
+  - Edits to `AFLPlusPlus/src/afl-fuzz-queue.c` to modify the heuristics of a fuzzing entry to include energy data.
+  - Requires `-DAFL_ENERGY_MAPPING` to enable energy tracking during fuzzing.

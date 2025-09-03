@@ -1,30 +1,54 @@
 CXX      ?= g++
+CC       ?= gcc
 CXXFLAGS ?= -Wall -O2 -fPIC
+CFLAGS   ?= -Wall -O2
 LDFLAGS  ?= -shared
+CPPJOULES_LIB ?= -lCPP_Joules
 
-CPPJOULES_INC ?=           
-CPPJOULES_LIB ?= -lCPP_Joules  
+SRC_DIR := src
+PRELOAD_DIR := $(SRC_DIR)/preload
+TESTS_DIR := $(SRC_DIR)/tests
+BUILD_DIR := build
+BUILD_TESTS_DIR := $(BUILD_DIR)/tests
+AFL_DIR := AFLPlusPlus
 
-PRELOAD_LIB := energy.so
-PRELOAD_SRC := energy_preload.cpp
+PRELOAD_SRC := $(PRELOAD_DIR)/energy_preload.cpp
+PRELOAD_LIB := $(BUILD_DIR)/energy.so
 
-all: $(PRELOAD_LIB)
+.PHONY: all
+all: $(PRELOAD_LIB) hello local_afl
 
-$(PRELOAD_LIB):
-	g++ -Wall -O2 -fPIC  -shared -o energy.so energy_preload.cpp -lCPP_Joules
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(BUILD_TESTS_DIR):
+	mkdir -p $(BUILD_TESTS_DIR)
+
+$(PRELOAD_LIB): $(PRELOAD_SRC) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(CPPJOULES_LIB)
 
 preload: $(PRELOAD_LIB)
 
-preload_afl:
-	g++ -Wall -O2 -fPIC -DAFL_ENERGY_MAPPING -shared -o energy.so energy_preload.cpp -lCPP_Joules
+preload_afl: CXXFLAGS += -DAFL_ENERGY_MAPPING
+preload_afl: $(PRELOAD_LIB)
 
-preload_print:
-	g++ -Wall -O2 -fPIC -DAFL_FORCE_PRINT -shared -o energy.so energy_preload.cpp -lCPP_Joules
+preload_print: CXXFLAGS += -DAFL_FORCE_PRINT
+preload_print: $(PRELOAD_LIB)
 
-preload_print_afl:
-	g++ -Wall -O2 -fPIC -DAFL_FORCE_PRINT -DAFL_ENERGY_MAPPING -shared -o energy.so energy_preload.cpp -lCPP_Joules
+preload_print_afl: CXXFLAGS += -DAFL_FORCE_PRINT -DAFL_ENERGY_MAPPING
+preload_print_afl: $(PRELOAD_LIB)
 
+.PHONY: hello
+hello: $(BUILD_TESTS_DIR)/hello
+$(BUILD_TESTS_DIR)/hello: $(TESTS_DIR)/hello.cpp | $(BUILD_TESTS_DIR)
+	$(CXX) $(CXXFLAGS) $(CFLAGS) -o $@ $^
+
+.PHONY: local_afl afl
+local_afl:
+	@cd $(AFL_DIR) && make distrib
+
+afl: local_afl
+
+.PHONY: clean
 clean:
-	rm -f $(PRELOAD_LIB)
-
-
+	rm -rf $(BUILD_DIR)
