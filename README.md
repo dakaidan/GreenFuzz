@@ -38,17 +38,50 @@
 
 ---
 
+## Prerequisites
+
+In order to fuzz with AFL++ you must set the power governor to `performance`:
+```bash
+cd /sys/devices/system/cpu
+echo performance | sudo tee cpu*/cpufreq/scaling_governor
+```
+
 ## Dependencies
 
 - `GCC`/`G++` newer than 11.0
 - `Make`
 - `CPPJoules` (linked in the preload library)
+- `perf` (for performance monitoring)
+- `CMake` (for building jsoncpp)
 
 To install `CPPJoules` follow instructions [here](https://rishalab.github.io/CPPJoules/), or use the following commands on Ubuntu:
 
 ```bash
 curl https://raw.githubusercontent.com/rishalab/CPPJoules/main/installer.sh | bash
 source ~/.bashrc
+```
+
+To install `perf` on Ubuntu:
+
+```bash
+sudo apt-get install linux-tools-common linux-tools-generic linux-tools-`uname -r`
+```
+
+And in order to use perf without root you must set the following kernel parameter:
+```bash
+echo "kernel.perf_event_paranoid=-1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+````
+
+You need `CMake` (>=3.24) which can be installed via Kitware's APT repository:
+```bash
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates gnupg wget
+wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
+sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main"
+sudo apt-get update
+sudo apt-get install -y cmake
+cmake --version
 ```
 
 ---
