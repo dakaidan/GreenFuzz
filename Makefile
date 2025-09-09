@@ -13,10 +13,13 @@ BUILD_TESTS_DIR := $(BUILD_DIR)/tests
 AFL_DIR := AFLPlusPlus
 
 PRELOAD_SRC := $(PRELOAD_DIR)/energy_preload.cpp
-PRELOAD_LIB := $(BUILD_DIR)/energy.so
+PRELOAD_BASE := $(BUILD_DIR)/energy.so
+PRELOAD_AFL := $(BUILD_DIR)/energy_afl.so
+PRELOAD_PRINT := $(BUILD_DIR)/energy_print.so
+PRELOAD_PRINT_AFL := $(BUILD_DIR)/energy_print_afl.so
 
 .PHONY: all
-all: $(PRELOAD_LIB) hello local_afl
+all: preload preload_afl preload_print preload_print_afl local_afl libpng zlib jsoncpp
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -24,19 +27,24 @@ $(BUILD_DIR):
 $(BUILD_TESTS_DIR):
 	mkdir -p $(BUILD_TESTS_DIR)
 
-$(PRELOAD_LIB): $(PRELOAD_SRC) | $(BUILD_DIR)
+preload: $(PRELOAD_BASE)
+$(PRELOAD_BASE): $(PRELOAD_SRC) | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(CPPJOULES_LIB)
 
-preload: $(PRELOAD_LIB)
+# AFL preload
+preload_afl: $(PRELOAD_AFL)
+$(PRELOAD_AFL): $(PRELOAD_SRC) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -DAFL_ENERGY_MAPPING $(LDFLAGS) -o $@ $^ $(CPPJOULES_LIB)
 
-preload_afl: CXXFLAGS += -DAFL_ENERGY_MAPPING
-preload_afl: $(PRELOAD_LIB)
+# Print preload
+preload_print: $(PRELOAD_PRINT)
+$(PRELOAD_PRINT): $(PRELOAD_SRC) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -DAFL_FORCE_PRINT $(LDFLAGS) -o $@ $^ $(CPPJOULES_LIB)
 
-preload_print: CXXFLAGS += -DAFL_FORCE_PRINT
-preload_print: $(PRELOAD_LIB)
-
-preload_print_afl: CXXFLAGS += -DAFL_FORCE_PRINT -DAFL_ENERGY_MAPPING
-preload_print_afl: $(PRELOAD_LIB)
+# Print + AFL preload
+preload_print_afl: $(PRELOAD_PRINT_AFL)
+$(PRELOAD_PRINT_AFL): $(PRELOAD_SRC) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -DAFL_FORCE_PRINT -DAFL_ENERGY_MAPPING $(LDFLAGS) -o $@ $^ $(CPPJOULES_LIB)
 
 .PHONY: hello
 hello: $(BUILD_TESTS_DIR)/hello
@@ -48,6 +56,15 @@ local_afl:
 	@cd $(AFL_DIR) && make distrib
 
 afl: local_afl
+
+libpng:
+	./scripts/build_libpng.sh
+
+zlib:
+	./scripts/build_zlib.sh
+
+jsoncpp:
+	./scripts/build_jsoncpp.sh
 
 .PHONY: clean
 clean:
