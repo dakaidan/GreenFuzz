@@ -19,7 +19,7 @@ PRELOAD_PRINT := $(BUILD_DIR)/energy_print.so
 PRELOAD_PRINT_AFL := $(BUILD_DIR)/energy_print_afl.so
 
 .PHONY: all
-all: preload preload_afl preload_print preload_print_afl local_afl libpng zlib jsoncpp
+all: setup_environment preload preload_afl preload_print preload_print_afl local_afl libpng zlib jsoncpp
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -65,6 +65,9 @@ zlib:
 
 jsoncpp:
 	./scripts/build_jsoncpp.sh
+
+setup_environment:
+	./scripts/setup_environment.sh
 
 .PHONY: clean
 clean:
