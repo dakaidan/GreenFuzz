@@ -801,7 +801,6 @@ void destroy_queue(afl_state_t *afl) {
    entries for every byte in the bitmap. We win that slot if there is no
    previous contender, or if the contender has a more favorable speed x size
    factor. */
-
 void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
                          bool have_trace) {
 
@@ -833,6 +832,27 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
 
     fav_factor = q->exec_us * q->len;
 
+  }
+
+  if (q->cpu_energy_cost || q->mem_energy_cost) {
+    u64 max_possible_value = (U64_MAX >> 2);
+    u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
+
+    if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
+      energy = max_possible_value;
+    }
+
+    if (energy > max_possible_value) {
+      energy = max_possible_value;
+    }
+
+    // normalise to 0..10000
+    u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
+
+    // invert
+    u64 inverted = 10000ULL - normalised_energy;
+
+    fav_factor += inverted * q->len;
   }
 
   if (have_trace) {
@@ -1476,12 +1496,48 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
   }
 
   /* --- BEGIN ENERGY HEURISTIC --- */
-  u64 energy_cost = q->cpu_energy_cost + q->mem_energy_cost;
-  if (energy_cost > 0) {
-    perf_score = (u32)(((u64)perf_score * 1000ULL) / energy_cost); // normalise the perf w.r.t energy cost
+  u64 avg_cpu_energy =
+      (u64)((u128)afl->total_cpu_energy / (u128)afl->total_cal_cycles);
+  u64 avg_mem_energy =
+      (u64)((u128)afl->total_mem_energy / (u128)afl->total_cal_cycles);
+
+  double cpu_multiplier = ({
+    double result;
+    if (afl->max_cpu_energy == afl->min_cpu_energy) {
+      result = 1.0;
+    } else {
+      double m = (0.2 - 5.0) / (double)(afl->max_cpu_energy - afl->min_cpu_energy);
+      double b = 5.0 - m * (double)afl->min_cpu_energy;
+      result = m * (double)avg_cpu_energy + b;
+      if (result < 0.2) result = 0.2;
+      if (result > 5.0) result = 5.0;
+    }
+    result;
+  });
+
+  double mem_multiplier = ({
+    double result;
+    if (afl->max_mem_energy == afl->min_mem_energy) {
+      result = 1.0;
+    } else {
+      double m = (0.2 - 5.0) / (double)(afl->max_mem_energy - afl->min_mem_energy);
+      double b = 5.0 - m * (double)afl->min_mem_energy;
+      result = m * (double)avg_mem_energy + b;
+      if (result < 0.2) result = 0.2;
+      if (result > 5.0) result = 5.0;
+    }
+    result;
+  });
+
+  perf_score = (u32)((double)perf_score * cpu_multiplier * mem_multiplier);
+
+
+  // u64 energy_cost = q->cpu_energy_cost + q->mem_energy_cost;
+  // if (energy_cost > 0) {
+    // perf_score = (u32)(((u64)perf_score * 1000ULL) / energy_cost); // normalise the perf w.r.t energy cost
     // perf_score = (u32)(alpha * perf_score - beta * energy_cost); // weighted combination of the perf and energy cost
-    perf_score += 1;  // ensure that we always have at least 1 to avoid skips
-  }
+    // perf_score += 1;  // ensure that we always have at least 1 to avoid skips
+  // }
   /* --- END ENERGY HEURISTIC --- */
 
   return perf_score;

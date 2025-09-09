@@ -679,6 +679,27 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
   afl->total_cal_us += diff_us;
   afl->total_cal_cycles += afl->stage_max;
 
+  // Add total energy for mem and cpu
+  afl->total_cpu_energy += q->cpu_energy_cost;
+  afl->total_mem_energy += q->mem_energy_cost;
+
+  // check if this is min or max cpu/mem energy
+  if (q->cpu_energy_cost) {
+
+    if (unlikely(!afl->min_cpu_energy) || unlikely(q->cpu_energy_cost < afl->min_cpu_energy)) {
+
+      afl->min_cpu_energy = q->cpu_energy_cost;
+
+    }
+
+    if (unlikely(!afl->max_cpu_energy) || unlikely(q->cpu_energy_cost > afl->max_cpu_energy)) {
+
+      afl->max_cpu_energy = q->cpu_energy_cost;
+
+    }
+
+  }
+
   /* OK, let's collect some stats about the performance of this test case.
      This is used for fuzzing air time calculations in calculate_score(). */
 

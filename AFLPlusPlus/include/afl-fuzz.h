@@ -727,6 +727,14 @@ typedef struct afl_state {
   s32 cpu_core_count,                   /* CPU core count                   */
       cpu_to_bind;                      /* bind to specific CPU             */
 
+  u128 total_mem_energy,                 /* Total memory energy              */
+      total_cpu_energy;                  /* Total CPU energy                 */
+
+  u64 min_mem_energy,
+      max_mem_energy,
+      min_cpu_energy,
+      max_cpu_energy;                  /* min and max energy readings      */
+
 #ifdef HAVE_AFFINITY
   s32 cpu_aff;                          /* Selected CPU core                */
 #endif                                                     /* HAVE_AFFINITY */
