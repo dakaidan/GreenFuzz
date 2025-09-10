@@ -5,7 +5,7 @@ set -euo pipefail
 # Example: ./run_campaign.sh 3 24h ./build/libpng_fuzzer ./data/libpng/public.zip ./build/energy.so ./build/energy_print.so
 
 if [[ $# -lt 4 ]]; then
-    echo "Usage: $0 <repetitions> <timeout> <target_bin> <corpus_zip> [afl_preload_lib]"
+    echo "Usage: $0 <repetitions> <timeout> <target_bin> <corpus_zip> [afl_preload_lib] [afl_preload_lib_cmin]"
     exit 1
 fi
 
