@@ -104,9 +104,9 @@ static void run_cleanup() {
         auto package_micros = static_cast<uint64_t>(package * 1000000.0);
         auto dram_micros = static_cast<uint64_t>(dram * 1000000.0);
 
-        fprintf(stdout, "[preload] Total energy = %.6f J (%" PRIu64 " uJ)\n", (package + dram), microjoules);
-        fprintf(stdout, "[preload] Package energy = %.6f J (%" PRIu64 " uJ)\n", package, package_micros);
-        fprintf(stdout, "[preload] DRAM energy = %.6f J (%" PRIu64 " uJ)\n", dram, dram_micros);
+        fprintf(stderr, "[preload] Total energy = %.6f J (%" PRIu64 " uJ)\n", (package + dram), microjoules);
+        fprintf(stderr, "[preload] Package energy = %.6f J (%" PRIu64 " uJ)\n", package, package_micros);
+        fprintf(stderr, "[preload] DRAM energy = %.6f J (%" PRIu64 " uJ)\n", dram, dram_micros);
 
         #ifdef AFL_ENERGY_MAPPING
         afl_set_energy_score(package_micros, dram_micros);
@@ -156,5 +156,3 @@ extern "C" void _Exit(int status) {
     run_cleanup();
     real__Exit(status);
 }
-
-

@@ -29,6 +29,10 @@ import shutil
 import subprocess
 import sys
 import uuid
+import re
+
+ENERGY_RE = re.compile(rb"Total\s+energy\s*=\s*\S+\s*J\s*\((\d+)\s*uJ\)")
+
 
 # https://more-itertools.readthedocs.io/en/stable/_modules/more_itertools/recipes.html#batched
 from sys import hexversion
@@ -98,8 +102,13 @@ group.add_argument(
     action="append",
     metavar="dir",
     required=True,
-    help="input directory with the starting corpus",
 )
+group.add_argument(
+    "--no-batch",
+    dest="no_batch",
+    action="store_true",
+)
+
 group.add_argument(
     "-o",
     dest="output",
@@ -164,6 +173,16 @@ group.add_argument(
     default=None,
     help="move crashes to a separate dir, always deduplicated",
 )
+###############################################################
+group.add_argument(
+    "--energy-first",
+    dest="energy_first",
+    action="store_true",
+    default=True,
+    help="Pick representative by lowest energy (tie: lowest index). If energy is missing, fall back to index."
+)
+###############################################################
+
 group.add_argument(
     "-A",
     dest="allow_any",
@@ -343,6 +362,16 @@ def get_nyx_map_size(target_dir):
 
 def afl_showmap(input_path=None, batch=None, afl_map_size=None, first=False):
     assert input_path or batch
+    
+    if batch and len(batch) == 1:
+        single_idx, single_path = batch[0]
+        arr, crashed, energy = afl_showmap(
+            input_path=single_path,
+            batch=None,
+            afl_map_size=afl_map_size,
+            first=first,
+        )
+        return [(single_idx, arr, crashed, energy)]
     # yapf: disable
     cmd = [
         afl_showmap_bin,
@@ -393,13 +422,15 @@ def afl_showmap(input_path=None, batch=None, afl_map_size=None, first=False):
     if args.edge_mode:
         cmd += ["-e"]
     cmd += ["--", args.exe] + args.args
-
+    
     env = os.environ.copy()
     env["AFL_QUIET"] = "1"
     env["ASAN_OPTIONS"] = "detect_leaks=0"
     if first:
         logger.debug("run command line: %s", subprocess.list2cmdline(cmd))
         env["AFL_CMIN_ALLOW_ANY"] = "1"
+    # if args.allow_any or args.no_batch:
+    #     env["AFL_CMIN_ALLOW_ANY"] = "1"
     if afl_map_size:
         env["AFL_MAP_SIZE"] = str(afl_map_size)
     if args.crash_only:
@@ -407,52 +438,99 @@ def afl_showmap(input_path=None, batch=None, afl_map_size=None, first=False):
     if args.allow_any:
         env["AFL_CMIN_ALLOW_ANY"] = "1"
 
+    lib_path = os.environ.get("GreenFuzz", "energy.so")
+
+    if not os.path.isabs(lib_path) and os.path.exists(lib_path):
+        lib_path = os.path.abspath(lib_path)
+
+    if not os.path.exists(lib_path):
+        logger.warning("Library %s not found, AFL_PRELOAD may fail", lib_path)
+    # for seeds in ms:
+    # check the best index for each tuple by getting the best energy and lowest idx
+    env["AFL_PRELOAD"] = lib_path
+    print(lib_path)
+    
     if input_from_file:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env, bufsize=1048576)
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            bufsize=1048576,
+        )
     else:
         p = subprocess.Popen(
             cmd,
             stdin=open(input_path, "rb"),
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=env,
             bufsize=1048576,
         )
-    out = p.stdout.read()
     p.wait()
-
+    out, err = p.communicate()
+    # print('out:', out)
+    # print('err:', err)
+    print('returncode:', p.returncode)
+    print('cmd:', subprocess.list2cmdline(cmd))
+  
+    
     if batch:
+        energy_list = [int(m.group(1)) for m in ENERGY_RE.finditer(err or b"")]
+        energy_it = iter(energy_list)
         result = []
+
         for idx, input_path in batch:
             basename = os.path.basename(input_path)
-            values = []
+            energy = next(energy_it, 0)
+            print('basename:', basename)
+            print('energy:', energy)
             try:
                 trace_file = os.path.join(output_path, basename)
-                with open(trace_file, "r") as f:
-                    values = list(map(int, f))
+                with open(trace_file, "rb") as f:
+                    values = [int(line) for line in f if line.strip().isdigit()]
+                    content = f.read()
+                    # print(' content:', content)
+                    # print(' values:', values)
                 crashed = len(values) == 0
                 os.unlink(trace_file)
             except FileNotFoundError:
-                a = None
+                values = []
                 crashed = True
+                a = None
             values = [(t // 1000) * 9 + t % 1000 for t in values]
             a = array.array(tuple_index_type_code, values)
-            result.append((idx, a, crashed))
+            result.append((idx, a, crashed, energy))
         os.unlink(filelist)
         os.rmdir(output_path)
         return result
     else:
         values = []
+        energy = 0
         # split by newline to avoid issues with Nyx mode
+        
+        # for line in err.split(b'\n'):
+        #     if b"Total energy =" in line:
+        #         energy = line.split(b"Total energy = ")[1].split(b" ")[0]
+        #         print('content', err.decode('utf-8', errors='ignore'))
+        #         energy = int(energy)
+        #         print('energy:', energy)
+
+        m = ENERGY_RE.search(err or b"")
+        energy = int(m.group(1)) if m else 0
+        print('energy:', energy)
+
         for line in out.split(b'\n'):
             if not line.isdigit():
                 continue
-            values.append(int(line))
+            values.append(int(line))    
         values = [(t // 1000) * 9 + t % 1000 for t in values]
         a = array.array(tuple_index_type_code, values)
+        print('values:', values)
         crashed = p.returncode in [2, 3]
         if input_from_file and stdin_file != args.stdin_file:
             os.unlink(stdin_file)
-        return a, crashed
+        return a, crashed, energy
 
 
 class JobDispatcher(multiprocessing.Process):
@@ -483,8 +561,13 @@ class Worker(multiprocessing.Process):
         max_tuple = map_size * 9
         max_file_index = 256 ** array.array(file_index_type_code).itemsize - 1
         m = array.array(file_index_type_code, [max_file_index] * max_tuple)
+
+        INF_EN = (1 << 64) - 1
+        best_energy = array.array("Q", [INF_EN] * max_tuple)
+
         counter = collections.Counter()
         crashes = []
+        energies = {}
 
         pack_name = os.path.join(args.output, ".traces", f"{self.idx}.pack")
         pack_pos = 0
@@ -494,7 +577,7 @@ class Worker(multiprocessing.Process):
                 if batch is None:
                     break
 
-                for idx, r, crash in afl_showmap(
+                for idx, r, crash, energy in afl_showmap(
                     batch=batch, afl_map_size=self.afl_map_size
                 ):
                     counter.update(r)
@@ -504,16 +587,27 @@ class Worker(multiprocessing.Process):
                     if crash:
                         crashes.append(idx)
 
+                    energies[idx] = energy
+                    print('energy-inside:', energy)
+
+
                     # If we aren't saving crashes to a separate dir, handle them
                     # the same as other inputs. However, unless AFL_CMIN_ALLOW_ANY=1,
                     # afl_showmap will not return any coverage for crashes so they will
-                    # never be retained.
+                    # nevbe retained.
                     if not crash or not args.crash_dir:
                         for t in r:
-                            if idx < m[t]:
-                                m[t] = idx
-                                used = True
-
+                            if args.energy_first and energy > 0:
+                                if (energy < best_energy[t]) or (energy == best_energy[t] and idx < m[t]):
+                                    print('t:', t)
+                                    print('energy-inside:', energy)
+                                    m[t] = idx
+                                    best_energy[t] = energy
+                                    used = True
+                            else:
+                                if idx < m[t]:
+                                    m[t] = idx
+                                    used = True
                     if used:
                         tuple_count = len(r)
                         r.tofile(trace_pack)
@@ -522,7 +616,8 @@ class Worker(multiprocessing.Process):
                     else:
                         self.p_out.put(None)
 
-        self.r_out.put((self.idx, m, counter, crashes))
+        self.r_out.put((self.idx, m, best_energy, counter, crashes, energies))
+
 
 
 class CombineTraceWorker(multiprocessing.Process):
@@ -657,7 +752,7 @@ def main():
         tuple_index_type_code = detect_type_code(afl_map_size * 9)
 
     logger.info("Testing the target binary")
-    tuples, _ = afl_showmap(files[0], afl_map_size=afl_map_size, first=True)
+    tuples, _ , _ = afl_showmap(files[0], afl_map_size=afl_map_size, first=True)
     if tuples:
         logger.info("ok, %d tuples recorded", len(tuples))
     else:
@@ -674,7 +769,9 @@ def main():
         p.start()
         workers.append(p)
 
-    chunk = max(1, min(128, len(files) // args.workers))
+    #chunk = max(1, min(128, len(files) // args.workers))
+    chunk = 1 if args.no_batch else max(1, min(128, len(files) // args.workers))
+
     jobs = list(batched(enumerate(files), chunk))
     jobs += [None] * args.workers  # sentinel
 
@@ -693,16 +790,47 @@ def main():
     dispatcher.join()
 
     logger.info("Obtaining trace results")
-    ms = []
+    ms = [None] * args.workers
+    es = [None] * args.workers
     crashes = []
     counter = collections.Counter()
+    energy_maps = [None] * args.workers  # optional debug
+
     for _ in tqdm(range(args.workers), ncols=0):
-        idx, m, c, crs = result_queue.get()
-        ms.append(m)
+        worker_idx, m, best_e, c, crs, energy_map = result_queue.get()
+        ms[worker_idx] = m
+        es[worker_idx] = best_e
+        energy_maps[worker_idx] = energy_map
         counter.update(c)
         crashes.extend(crs)
-        workers[idx].join()
-    best_idxes = list(map(min, zip(*ms)))
+        workers[worker_idx].join()
+
+        print(worker_idx)
+        print(m)
+        print(c)
+        print(crs)
+        print(energy_map)
+
+    # Choose best index per tuple across workers by (energy, idx)
+    max_file_index = 256 ** array.array(file_index_type_code).itemsize - 1
+    num_tuples = len(ms[0])
+    INF_EN = (1 << 64) - 1
+    best_idxes = [max_file_index] * num_tuples
+    for t in range(num_tuples):
+        best_pair = (INF_EN, max_file_index)  # (energy, idx)
+        for i in range(args.workers):
+            idx = ms[i][t]
+            en  = es[i][t]
+            if idx == max_file_index:
+                continue
+            cand = (en, idx) if en != INF_EN else (INF_EN, idx)
+            if cand < best_pair:
+                best_pair = cand
+        if best_pair[0] == INF_EN:
+            # no energy info; fall back to smallest index among workers
+            best_idxes[t] = min(ms[i][t] for i in range(args.workers))
+        else:
+            best_idxes[t] = best_pair[1]
 
     if not args.crash_dir:
         logger.info(
@@ -727,6 +855,7 @@ def main():
 
     def save_file(idx):
         input_path = files[idx]
+        print('input_path:', input_path)
         fn = (
             base64.b16encode(hash_list[idx]).decode("utf8").lower()
             if not args.no_dedup
@@ -827,3 +956,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
