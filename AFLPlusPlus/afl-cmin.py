@@ -518,6 +518,7 @@ def afl_showmap(input_path=None, batch=None, afl_map_size=None, first=False):
 
         m = ENERGY_RE.search(err or b"")
         energy = int(m.group(1)) if m else 0
+        print('input_path:', input_path)
         print('energy:', energy)
 
         for line in out.split(b'\n'):
@@ -588,8 +589,6 @@ class Worker(multiprocessing.Process):
                         crashes.append(idx)
 
                     energies[idx] = energy
-                    print('energy-inside:', energy)
-
 
                     # If we aren't saving crashes to a separate dir, handle them
                     # the same as other inputs. However, unless AFL_CMIN_ALLOW_ANY=1,
@@ -600,7 +599,8 @@ class Worker(multiprocessing.Process):
                             if args.energy_first and energy > 0:
                                 if (energy < best_energy[t]) or (energy == best_energy[t] and idx < m[t]):
                                     print('t:', t)
-                                    print('energy-inside:', energy)
+                                    print('energy:', energy)
+                                    print('best_energy[t]:', best_energy[t])
                                     m[t] = idx
                                     best_energy[t] = energy
                                     used = True
@@ -805,11 +805,11 @@ def main():
         crashes.extend(crs)
         workers[worker_idx].join()
 
-        print(worker_idx)
-        print(m)
-        print(c)
-        print(crs)
-        print(energy_map)
+        print("worker_idx:", worker_idx)
+        # print(m)
+        # print(c)
+        print("crashes:", crs)
+        print("energy_map:", energy_map)
 
     # Choose best index per tuple across workers by (energy, idx)
     max_file_index = 256 ** array.array(file_index_type_code).itemsize - 1
