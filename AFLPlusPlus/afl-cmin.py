@@ -438,7 +438,7 @@ def afl_showmap(input_path=None, batch=None, afl_map_size=None, first=False):
     if args.allow_any:
         env["AFL_CMIN_ALLOW_ANY"] = "1"
 
-    lib_path = os.environ.get("GreenFuzz", "energy.so")
+    lib_path = os.environ.get("GreenFuzz", "build/energy.so")
 
     if not os.path.isabs(lib_path) and os.path.exists(lib_path):
         lib_path = os.path.abspath(lib_path)
