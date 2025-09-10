@@ -17,6 +17,7 @@ echo performance | sudo tee cpu*/cpufreq/scaling_governor
 
 echo "[*] Installing JoulesCPP..."
 curl https://raw.githubusercontent.com/rishalab/CPPJoules/main/installer.sh | bash
+source ~/.bashrc
 
 echo "[*] Installing perf..."
 sudo apt-get install linux-tools-common linux-tools-generic linux-tools-`uname -r`
