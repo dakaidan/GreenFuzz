@@ -730,7 +730,11 @@ def main():
         size_list = list(pool.map(os.path.getsize, files, chunksize))
     idxes = sorted(range(len(files)), key=lambda x: size_list[x])
     files = [files[idx] for idx in idxes]
-    hash_list = [hash_list[idx] for idx in idxes]
+    if not args.no_dedup:
+        hash_list = [hash_list[idx] for idx in idxes]
+    else:
+        hash_list = None
+    # hash_list = [hash_list[idx] for idx in idxes]
 
     afl_map_size = None
     if "AFL_MAP_SIZE" in os.environ:
