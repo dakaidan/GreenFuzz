@@ -26,6 +26,7 @@
 #include <limits.h>
 #include <ctype.h>
 #include <math.h>
+#include <stdint.h>
 
 #ifdef _STANDALONE_MODULE
 void minimize_bits(afl_state_t *afl, u8 *dst, u8 *src) {
@@ -835,7 +836,7 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
   }
 
   if (q->cpu_energy_cost || q->mem_energy_cost) {
-    u64 max_possible_value = (U64_MAX >> 2);
+    u64 max_possible_value = (UINT64_MAX >> 2);
     u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
 
     if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
