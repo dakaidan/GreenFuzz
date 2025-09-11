@@ -11,6 +11,14 @@ sudo apt-get install -y cpio libcapstone-dev # for Nyx mode
 sudo apt-get install -y wget curl # for Frida mode
 sudo apt-get install -y python3-pip # for Unicorn mode
 
+echo "[*] Installing base AFL++"
+sudo mkdir -p /tmp/afl
+sudo chown "$USER":"$USER" /tmp/afl
+git clone https://github.com/AFLplusplus/AFLplusplus
+cd AFLplusplus
+make distrib
+sudo make install
+
 echo "[*] Setting governor to 'performance'..."
 cd /sys/devices/system/cpu
 echo performance | sudo tee cpu*/cpufreq/scaling_governor
@@ -37,5 +45,6 @@ cmake --version
 
 echo "[*] Installing utilities..."
 sudo apt-get install screen
+sudo apt-get install libtool
 
 echo "Done"
