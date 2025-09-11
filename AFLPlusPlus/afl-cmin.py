@@ -437,18 +437,6 @@ def afl_showmap(input_path=None, batch=None, afl_map_size=None, first=False):
         env["AFL_CMIN_CRASHES_ONLY"] = "1"
     if args.allow_any:
         env["AFL_CMIN_ALLOW_ANY"] = "1"
-
-    lib_path = os.environ.get("GreenFuzz", "build/energy.so")
-
-    if not os.path.isabs(lib_path) and os.path.exists(lib_path):
-        lib_path = os.path.abspath(lib_path)
-
-    if not os.path.exists(lib_path):
-        logger.warning("Library %s not found, AFL_PRELOAD may fail", lib_path)
-    # for seeds in ms:
-    # check the best index for each tuple by getting the best energy and lowest idx
-    env["AFL_PRELOAD"] = lib_path
-    print(lib_path)
     
     if input_from_file:
         p = subprocess.Popen(
