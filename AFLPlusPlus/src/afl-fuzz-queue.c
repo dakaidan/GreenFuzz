@@ -850,7 +850,7 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
     // normalise to 0..10000
     u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
 
-    fav_factor += inverted * q->len;
+    fav_factor += normalised_energy * q->len;
   }
 
   if (have_trace) {
