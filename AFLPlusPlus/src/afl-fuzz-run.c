@@ -698,6 +698,18 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
 
     }
 
+    if (unlikely(!afl->min_mem_energy) || unlikely(q->mem_energy_cost < afl->min_mem_energy)) {
+
+      afl->min_mem_energy = q->mem_energy_cost;
+
+    }
+
+    if (unlikely(!afl->max_mem_energy) || unlikely(q->mem_energy_cost > afl->mem_cpu_energy)) {
+
+      afl->max_mem_energy = q->mem_energy_cost;
+
+    }
+
   }
 
   /* OK, let's collect some stats about the performance of this test case.
