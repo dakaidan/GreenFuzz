@@ -850,9 +850,6 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
     // normalise to 0..10000
     u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
 
-    // invert
-    u64 inverted = 10000ULL - normalised_energy;
-
     fav_factor += inverted * q->len;
   }
 
