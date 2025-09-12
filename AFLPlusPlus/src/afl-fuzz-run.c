@@ -704,7 +704,7 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
 
     }
 
-    if (unlikely(!afl->max_mem_energy) || unlikely(q->mem_energy_cost > afl->mem_cpu_energy)) {
+    if (unlikely(!afl->max_mem_energy) || unlikely(q->mem_energy_cost > afl->max_mem_energy)) {
 
       afl->max_mem_energy = q->mem_energy_cost;
 
