@@ -836,21 +836,28 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
   }
 
   if (q->cpu_energy_cost || q->mem_energy_cost) {
-    u64 max_possible_value = (UINT64_MAX >> 2);
-    u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
+    // u64 max_possible_value = (UINT64_MAX >> 2);
+    // u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
+    // if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
+    //   energy = max_possible_value;
+    // }
+    // if (energy > max_possible_value) {
+    //   energy = max_possible_value;
+    // }
+    // // normalise to 0..10000
+    // u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
+    // fav_factor += normalised_energy * q->len;
 
-    if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
-      energy = max_possible_value;
+    /* normalise to min-max value between 0 and 1 */
+    u64 e    = q->cpu_energy_cost + q->mem_energy_cost;
+    u64 eMin = afl->min_cpu_energy + afl->min_mem_energy;
+    u64 eMax = afl->max_cpu_energy + afl->max_mem_energy;
+    if (eMax > eMin) {
+      double norm = (double)((e > eMin ? e - eMin : 0)) / (double)(eMax - eMin);
+      double bonus = 1.0 + 0.25 * (1.0 - norm); /* Add bonus for smooting  low energy seeds contribution to fav_factor */
+      if (bonus < 1.0) bonus = 1.0;
+      fav_factor = (u64)((double)fav_factor / bonus);
     }
-
-    if (energy > max_possible_value) {
-      energy = max_possible_value;
-    }
-
-    // normalise to 0..10000
-    u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
-
-    fav_factor += normalised_energy * q->len;
   }
 
   if (have_trace) {
