@@ -792,6 +792,28 @@ void destroy_queue(afl_state_t *afl) {
 
 }
 
+static inline double energy_bonus(afl_state_t *afl, u64 e) {
+  u64 eMin = afl->min_cpu_energy + afl->min_mem_energy;
+  u64 eMax = afl->max_cpu_energy + afl->max_mem_energy;
+  if (!e || eMax <= eMin) return 1.0;
+
+  /* LOG-min–max norm to make it more stable in heavy-tail distributions */
+  double num = log1p((double)((e > eMin) ? (e - eMin) : 0));
+  double den = log1p((double)(eMax - eMin));
+  double norm = num / den;
+  if (norm < 0.0) norm = 0.0;
+  if (norm > 1.0) norm = 1.0;
+
+  /* Pivot 0.5: norm<0.5 award, norm>0.5 punish */
+  const double a = 0.25;  
+  double bonus = 1.0 + a * (0.5 - norm);
+
+  if (bonus < 0.8)  bonus = 0.8;
+  if (bonus > 1.25) bonus = 1.25;
+
+  return bonus;
+}
+
 /* When we bump into a new path, we call this to see if the path appears
    more "favorable" than any of the existing ones. The purpose of the
    "favorables" is to have a minimal set of paths that trigger all the bits
@@ -836,28 +858,24 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
   }
 
   if (q->cpu_energy_cost || q->mem_energy_cost) {
-    u64 max_possible_value = (UINT64_MAX >> 2);
-    u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
-    if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
-      energy = max_possible_value;
-    }
-    if (energy > max_possible_value) {
-      energy = max_possible_value;
-    }
-    // normalise to 0..10000
-    u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
-    fav_factor += normalised_energy;
+    double q_bonus = 1.0;
+    // u64 max_possible_value = (UINT64_MAX >> 2);
+    // u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
+    // if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
+    //   energy = max_possible_value;
+    // }
+    // if (energy > max_possible_value) {
+    //   energy = max_possible_value;
+    // }
+    // // normalise to 0..10000
+    // u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
+    // fav_factor += normalised_energy;
 
     /* normalise to min-max value between 0 and 1 */
-    // u64 e    = q->cpu_energy_cost + q->mem_energy_cost;
-    // u64 eMin = afl->min_cpu_energy + afl->min_mem_energy;
-    // u64 eMax = afl->max_cpu_energy + afl->max_mem_energy;
-    // if (eMax > eMin) {
-    //   double norm = (double)((e > eMin ? e - eMin : 0)) / (double)(eMax - eMin);
-    //   double bonus = 1.0 + 0.25 * (1.0 - norm); /* Add bonus for smooting  low energy seeds contribution to fav_factor */
-    //   if (bonus < 1.0) bonus = 1.0;
-    //   fav_factor = (u64)((double)fav_factor / bonus);
-    // }
+    u64 e = q->cpu_energy_cost + q->mem_energy_cost;
+    q_bonus = energy_bonus(afl, e);
+    fav_factor = (u64)((double)fav_factor / q_bonus);
+    
   }
 
   if (have_trace) {
@@ -898,6 +916,14 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
             top_rated_fav_factor =
                 afl->top_rated[i]->exec_us * afl->top_rated[i]->len;
 
+          }
+
+          if (afl->top_rated[i]->cpu_energy_cost || afl->top_rated[i]->mem_energy_cost) {
+            double top_bonus = 1.0;
+
+            u64 e = afl->top_rated[i]->cpu_energy_cost + afl->top_rated[i]->mem_energy_cost;
+            top_bonus = energy_bonus(afl, e);
+            top_rated_fav_factor = (u64)((double)top_rated_fav_factor / top_bonus);
           }
 
           if (likely(fuzz_p2 > top_rated_fuzz_p2)) { continue; }
@@ -1145,6 +1171,27 @@ void update_bitmap_rescore(afl_state_t *afl, struct queue_entry *q, u32 index) {
 
   }
 
+  if (q->cpu_energy_cost || q->mem_energy_cost) {
+    double q_bonus = 1.0;
+    // u64 max_possible_value = (UINT64_MAX >> 2);
+    // u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
+    // if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
+    //   energy = max_possible_value;
+    // }
+    // if (energy > max_possible_value) {
+    //   energy = max_possible_value;
+    // }
+    // // normalise to 0..10000
+    // u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
+    // fav_factor += normalised_energy;
+
+    /* normalise to min-max value between 0 and 1 */
+    u64 e = q->cpu_energy_cost + q->mem_energy_cost;
+    q_bonus = energy_bonus(afl, e);
+    fav_factor = (u64)((double)fav_factor / q_bonus);
+    
+  }
+
   if (afl->top_rated[i]) {
 
     /* Faster-executing or smaller test cases are favored. */
@@ -1175,6 +1222,14 @@ void update_bitmap_rescore(afl_state_t *afl, struct queue_entry *q, u32 index) {
       top_rated_fav_factor =
           afl->top_rated[i]->exec_us * afl->top_rated[i]->len;
 
+    }
+
+    if (afl->top_rated[i]->cpu_energy_cost || afl->top_rated[i]->mem_energy_cost) {
+      double top_bonus = 1.0;
+
+      u64 e = afl->top_rated[i]->cpu_energy_cost + afl->top_rated[i]->mem_energy_cost;
+      top_bonus = energy_bonus(afl, e);
+      top_rated_fav_factor = (u64)((double)top_rated_fav_factor / top_bonus);
     }
 
     if (likely(fuzz_p2 > top_rated_fuzz_p2)) { return; }
@@ -1552,8 +1607,7 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
   perf_score = (u32)((double)perf_score * cpu_multiplier * mem_multiplier);
   /* Make sure that we don't go over limit. */ 
   if (perf_score > afl->havoc_max_mult * 100) perf_score = afl->havoc_max_mult * 100; 
-  if (perf_score < 1) perf_score = 1; 
-
+  if (afl->schedule != COE && perf_score < 1) perf_score = 1;
 
   // u64 energy_cost = q->cpu_energy_cost + q->mem_energy_cost;
   // if (energy_cost > 0) {
@@ -1853,4 +1907,3 @@ inline void queue_testcase_store_mem(afl_state_t *afl, struct queue_entry *q,
   }
 
 }
-
