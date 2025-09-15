@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
 # Usage: ./run_campaign.sh <repetitions> <timeout> <target_bin> <corpus_zip> [local_fuzz] [local_cmin]
 # Example: ./run_campaign.sh 3 24h ./build/libpng_fuzzer ./data/libpng/public.zip true true
 
