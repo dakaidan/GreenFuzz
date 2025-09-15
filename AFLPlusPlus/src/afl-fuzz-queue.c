@@ -1499,6 +1499,9 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
   u64 avg_mem_energy =
       (u64)((u128)afl->total_mem_energy / (u128)afl->total_cal_cycles);
 
+  u64 cpu_energy = q->cpu_energy_cost;
+  u64 mem_energy = q->mem_energy_cost;
+
   double cpu_multiplier = ({
     double result;
     if (afl->max_cpu_energy == afl->min_cpu_energy) {
@@ -1506,7 +1509,8 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
     } else {
       double m = (0.2 - 5.0) / (double)(afl->max_cpu_energy - afl->min_cpu_energy);
       double b = 5.0 - m * (double)afl->min_cpu_energy;
-      result = m * (double)avg_cpu_energy + b;
+      //result = m * (double)avg_cpu_energy + b;
+      result = m * (double)q->cpu_energy_cost + b;
       if (result < 0.2) result = 0.2;
       if (result > 5.0) result = 5.0;
     }
@@ -1520,7 +1524,8 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
     } else {
       double m = (0.2 - 5.0) / (double)(afl->max_mem_energy - afl->min_mem_energy);
       double b = 5.0 - m * (double)afl->min_mem_energy;
-      result = m * (double)avg_mem_energy + b;
+      //result = m * (double)avg_mem_energy + b;
+      result = m * (double)q->mem_energy_cost + b;
       if (result < 0.2) result = 0.2;
       if (result > 5.0) result = 5.0;
     }
