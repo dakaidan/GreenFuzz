@@ -1517,7 +1517,12 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
       double m = (0.2 - 5.0) / (double)(afl->max_cpu_energy - afl->min_cpu_energy);
       double b = 5.0 - m * (double)afl->min_cpu_energy;
       //result = m * (double)avg_cpu_energy + b;
-      result = m * (double)q->cpu_energy_cost + b;
+      // result = m * (double)q->cpu_energy_cost + b;
+      if (q->cpu_energy_cost == 0) {
+         result = 1.0; /* if seed energy is not yet calculated it is assigned as notr */
+      } else {
+          result = m * (double)q->cpu_energy_cost + b;
+         }
       if (result < 0.2) result = 0.2;
       if (result > 5.0) result = 5.0;
     }
@@ -1532,7 +1537,12 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
       double m = (0.2 - 5.0) / (double)(afl->max_mem_energy - afl->min_mem_energy);
       double b = 5.0 - m * (double)afl->min_mem_energy;
       //result = m * (double)avg_mem_energy + b;
-      result = m * (double)q->mem_energy_cost + b;
+      //result = m * (double)q->mem_energy_cost + b;
+      if (q->mem_energy_cost == 0) {
+        result = 1.0;
+      } else {
+        result = m * (double)q->mem_energy_cost + b;
+      }
       if (result < 0.2) result = 0.2;
       if (result > 5.0) result = 5.0;
     }
@@ -1540,6 +1550,9 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
   });
 
   perf_score = (u32)((double)perf_score * cpu_multiplier * mem_multiplier);
+  /* Make sure that we don't go over limit. */ 
+  if (perf_score > afl->havoc_max_mult * 100) perf_score = afl->havoc_max_mult * 100; 
+  if (perf_score < 1) perf_score = 1; 
 
 
   // u64 energy_cost = q->cpu_energy_cost + q->mem_energy_cost;
