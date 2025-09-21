@@ -91,7 +91,7 @@ cmake --version
 
 ## Build Instructions
 
-GreenAFL uses a Makefile to build both the preload library and test binaries.
+GreenAFL uses a Makefile to build both the preload library and test binaries. Please make sure CPPJoules is installed before build.
 
 ### Build Everything
 
