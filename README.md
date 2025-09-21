@@ -36,7 +36,7 @@
 - `AFLPlusPlus/`: Directory for the AFL++ fuzzer. This project includes a customized AFLPlusPlus build.
 - `src/preload/`: Contains energy_preload.cpp, the preload library measuring energy usage.
 - `src/tests/`: Example test programs that can be compiled and run with the preload library.
-- `build/`: Build artifacts are generated here, including the compiled preload library and test binaries.
+- `build/`: Build artifacts will be generated here, including the compiled preload library and test binaries.
 
 ---
 
@@ -102,7 +102,7 @@ make
 This will:
 
 1. Build the energy measurement preload library (`build/energy.so`).
-2. Compile all test programs in `src/tests/` into `build/tests/`.
+2. Clone and build a AFLPlusPlus instance in `AFLplusplus/`
 3. Build a local AFLPlusPlus instance in `AFLPlusPlus/`.
 
 ### Build Preload Library Only
