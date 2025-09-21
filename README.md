@@ -21,14 +21,16 @@
 ```bash
 .
 ├── AFLPlusPlus              # Local AFLPlusPlus clone/build
-├── LICENSE
+├── data
 ├── Makefile
 ├── README.md
+├── scripts
 └── src
-├── preload
-│   └── energy_preload.cpp   # Preload library to measure energy
-└── tests
-    └── hello.cpp            # Example test program
+    ├── oss-fuzz
+    ├── preload
+    │   └── energy_preload.cpp   # Preload library to measure energy
+    └── tests
+        └── hello.cpp            # Example test program
 ```
 
 - `AFLPlusPlus/`: Directory for the AFL++ fuzzer. This project includes a customized AFLPlusPlus build.
@@ -37,6 +39,7 @@
 - `build/`: Build artifacts are generated here, including the compiled preload library and test binaries.
 
 ---
+
 
 ## Prerequisites
 
@@ -158,7 +161,7 @@ This injects the energy measurement library into programs being fuzzed.
 
 ## Testing
 
-All tests in `src/tests/` are automatically compiled during make all.
+Test file hello.cpp in src/tests/ will be build with `make hello`
 
 Example:
 
