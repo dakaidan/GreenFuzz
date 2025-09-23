@@ -2,6 +2,10 @@
 
 **GreenAFL** is a modified version of AFLPlusPlus that integrates energy measurement into program execution. It allows users to measure energy consumption of target programs, either directly or during fuzzing with AFL.
 
+**Overview of GreenAFL’s energy-guided fuzzing loop** The green boxes with bold text highlight where our energy-aware heuristics are applied, **B**, energy-aware score computation) and **D**, airtime scheduling).} 
+
+<img width="3602" height="1531" alt="image" src="https://github.com/user-attachments/assets/8410b4e4-dd5c-4519-86fc-16a38ee94f2d" />
+
 ---
 
 ## Table of Contents
