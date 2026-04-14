@@ -252,6 +252,8 @@ struct queue_entry {
 
   u64 cpu_energy_cost;                   /* power usage score for cpu        */
   u64 mem_energy_cost;                  /* power usage score for memory      */
+  u8  energy_measured;                  /* true if at least one valid RAPL
+                                           reading was obtained              */
 
   struct queue_entry *mother;            /* queue entry this based on        */
   u8                 *trace_mini;        /* Trace bytes, if kept             */
@@ -514,6 +516,12 @@ typedef struct afl_state {
   void *cpu_energy_map;                                       /* cpu energy map shm */
   void *mem_energy_map;                                      /* mem energy map shm */
 
+  u64 last_run_cpu_energy;           /* scratch: energy of the last fuzz_run_target() call */
+  u64 last_run_mem_energy;           /* scratch: memory energy of the last fuzz_run_target() call */
+  u8  last_run_energy_valid;         /* scratch: true if preload wrote a real value */
+
+#define ENERGY_INVALID ((u64)-1)     /* sentinel: preload did not write   */
+
   char **argv;                                            /* argv if needed */
 
   /* MOpt:
@@ -625,6 +633,7 @@ typedef struct afl_state {
       *virgin_tmout,                    /* Bits we haven't seen in tmouts   */
       *virgin_crash;                    /* Bits we haven't seen in crashes  */
 
+  u8 in_calibration;                     /* Currently in calibration?        */
   double *alias_probability;            /* alias weighted probabilities     */
   u32    *alias_table;                /* alias weighted random lookup table */
   u32     active_items;                 /* enabled entries in the queue     */
@@ -718,6 +727,7 @@ typedef struct afl_state {
   AFL_RAND_RETURN rand_seed[3];
   s64             init_seed;
 
+  u64 total_energy_entries;     /* Number of seeds with energy data */
   u64 total_cal_us,                     /* Total calibration time (us)      */
       total_cal_cycles;                 /* Total calibration cycles         */
 

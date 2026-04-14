@@ -53,7 +53,8 @@ $(BUILD_TESTS_DIR)/hello: $(TESTS_DIR)/hello.cpp | $(BUILD_TESTS_DIR)
 
 .PHONY: local_afl afl
 local_afl:
-	@cd $(AFL_DIR) && make distrib
+	#@cd $(AFL_DIR) && make distrib
+	@cd $(AFL_DIR) && make -j$(shell nproc) all
 
 afl: local_afl
 

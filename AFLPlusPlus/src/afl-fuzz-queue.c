@@ -1556,28 +1556,17 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
   }
 
   /* --- BEGIN ENERGY HEURISTIC --- */
-  u64 avg_cpu_energy =
-      (u64)((u128)afl->total_cpu_energy / (u128)afl->total_cal_cycles);
-  u64 avg_mem_energy =
-      (u64)((u128)afl->total_mem_energy / (u128)afl->total_cal_cycles);
-
-  u64 cpu_energy = q->cpu_energy_cost;
-  u64 mem_energy = q->mem_energy_cost;
 
   double cpu_multiplier = ({
     double result;
-    if (afl->max_cpu_energy == afl->min_cpu_energy) {
+    if (!q->energy_measured) {
+      result = 1.0;   /* genuinely no measurement — neutral */
+    } else if (afl->max_cpu_energy == afl->min_cpu_energy) {
       result = 1.0;
     } else {
       double m = (0.2 - 5.0) / (double)(afl->max_cpu_energy - afl->min_cpu_energy);
       double b = 5.0 - m * (double)afl->min_cpu_energy;
-      //result = m * (double)avg_cpu_energy + b;
-      // result = m * (double)q->cpu_energy_cost + b;
-      if (q->cpu_energy_cost == 0) {
-         result = 1.0; /* if seed energy is not yet calculated it is assigned as notr */
-      } else {
-          result = m * (double)q->cpu_energy_cost + b;
-         }
+      result = m * (double)q->cpu_energy_cost + b;
       if (result < 0.2) result = 0.2;
       if (result > 5.0) result = 5.0;
     }
@@ -1586,18 +1575,14 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
   double mem_multiplier = ({
     double result;
-    if (afl->max_mem_energy == afl->min_mem_energy) {
+    if (!q->energy_measured) {
+      result = 1.0;   /* genuinely no measurement — neutral */
+    } else if (afl->max_mem_energy == afl->min_mem_energy) {
       result = 1.0;
     } else {
       double m = (0.2 - 5.0) / (double)(afl->max_mem_energy - afl->min_mem_energy);
       double b = 5.0 - m * (double)afl->min_mem_energy;
-      //result = m * (double)avg_mem_energy + b;
-      //result = m * (double)q->mem_energy_cost + b;
-      if (q->mem_energy_cost == 0) {
-        result = 1.0;
-      } else {
-        result = m * (double)q->mem_energy_cost + b;
-      }
+      result = m * (double)q->mem_energy_cost + b;
       if (result < 0.2) result = 0.2;
       if (result > 5.0) result = 5.0;
     }

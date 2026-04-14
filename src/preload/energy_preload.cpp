@@ -8,6 +8,8 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <pthread.h>
+
 
 #ifdef AFL_ENERGY_MAPPING
 static volatile uint64_t *cpu_energy_map = nullptr;
@@ -62,6 +64,7 @@ static void run_cleanup() {
     reopen_stdout();
     #endif
     fprintf(stderr, "[preload] After main()\n");
+    fprintf(stderr, "[preload] run_cleanup (pid=%d)\n", getpid());
 
     if (tracker) {
         tracker->stop();
@@ -74,6 +77,7 @@ static void run_cleanup() {
         std::cout.rdbuf(old_buf);
 
         std::string output = oss.str();
+        // fprintf(stderr, "[preload] RAW print_energy() output:\n%s\n", output.c_str());
         std::istringstream iss(output);
 
         std::string line;
@@ -100,13 +104,13 @@ static void run_cleanup() {
             }
         }
 
-        auto microjoules = static_cast<uint64_t>((package + dram) * 1000000.0);
-        auto package_micros = static_cast<uint64_t>(package * 1000000.0);
-        auto dram_micros = static_cast<uint64_t>(dram * 1000000.0);
+        auto microjoules = static_cast<uint64_t>((package + dram));
+        auto package_micros = static_cast<uint64_t>(package);
+        auto dram_micros = static_cast<uint64_t>(dram);
 
-        fprintf(stderr, "[preload] Total energy = %.6f J (%" PRIu64 " uJ)\n", (package + dram), microjoules);
-        fprintf(stderr, "[preload] Package energy = %.6f J (%" PRIu64 " uJ)\n", package, package_micros);
-        fprintf(stderr, "[preload] DRAM energy = %.6f J (%" PRIu64 " uJ)\n", dram, dram_micros);
+        fprintf(stderr, "[preload] Total energy = %.6f J (%" PRIu64 " uJ)\n", (package + dram) / 1000000.0, microjoules);
+        fprintf(stderr, "[preload] Package energy = %.6f J (%" PRIu64 " uJ)\n", package / 1000000.0, package_micros);
+        fprintf(stderr, "[preload] DRAM energy = %.6f J (%" PRIu64 " uJ)\n", dram / 1000000.0, dram_micros);
 
         #ifdef AFL_ENERGY_MAPPING
         afl_set_energy_score(package_micros, dram_micros);
@@ -117,6 +121,21 @@ static void run_cleanup() {
     }
 }
 
+static void after_fork_child() {
+  /* Do NOT touch SHM here — the parent (AFL) sets it to ENERGY_INVALID
+     before each run.  The preload writes the real value in run_cleanup(). */
+
+  if (tracker) {
+    delete tracker;
+    tracker = nullptr;
+  }
+
+  tracker = new EnergyTracker();
+  tracker->start();
+  fprintf(stderr, "[preload] after_fork_child: tracker restarted (pid=%d)\n", getpid());
+}
+
+
 __attribute__((constructor))
 static void preload_init() {
     fprintf(stderr, "[preload] Before main()\n");
@@ -126,6 +145,8 @@ static void preload_init() {
 
     tracker = new EnergyTracker();
     tracker->start();
+    pthread_atfork(nullptr, nullptr, after_fork_child);
+    
 }
 
 __attribute__((destructor))

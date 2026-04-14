@@ -62,6 +62,14 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
 
 #endif
 
+  /* Set SHM to ENERGY_INVALID before the run.  The child's preload will
+     overwrite with a real value (including 0).  If it stays ENERGY_INVALID
+     after the child exits, we know the preload never wrote. */
+  if (afl->cpu_energy_map)
+    *((volatile u64 *)afl->cpu_energy_map) = ENERGY_INVALID;
+  if (afl->mem_energy_map)
+    *((volatile u64 *)afl->mem_energy_map) = ENERGY_INVALID;
+
   fsrv_run_result_t res = afl_fsrv_run_target(fsrv, timeout, &afl->stop_soon);
 
 #ifdef __AFL_CODE_COVERAGE
@@ -111,23 +119,29 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
   #ifdef AFL_ENERGY_MAPPING_DEBUG
   assert(afl->cpu_energy_map != NULL || afl->mem_energy_map != NULL);
   #endif
-  {
+  afl->last_run_cpu_energy   = 0;
+  afl->last_run_mem_energy   = 0;
+  afl->last_run_energy_valid = 0;
+
+  if (afl->stage_name &&
+      strcmp(afl->stage_name, "calibration") == 0) {
+
     if (afl->cpu_energy_map) {
-      u64 val = *((volatile u64 *)afl->cpu_energy_map);
-      if (val > 0 && afl->queue_cur) {
-        afl->queue_cur->cpu_energy_cost = val;
+      u64 cpu_raw = *((volatile u64 *)afl->cpu_energy_map);
+      if (cpu_raw != ENERGY_INVALID) {
+        afl->last_run_cpu_energy = cpu_raw;
+        afl->last_run_energy_valid = 1;
       }
-      *((volatile u64 *)afl->cpu_energy_map) = 0;
     }
-  }
-  {
+
     if (afl->mem_energy_map) {
-      u64 val = *((volatile u64 *)afl->mem_energy_map);
-      if (val > 0 && afl->queue_cur) {
-        afl->queue_cur->mem_energy_cost = val;
+      u64 mem_raw = *((volatile u64 *)afl->mem_energy_map);
+      if (mem_raw != ENERGY_INVALID) {
+        afl->last_run_mem_energy = mem_raw;
+        afl->last_run_energy_valid = 1;
       }
-      *((volatile u64 *)afl->mem_energy_map) = 0;
     }
+
   }
   /* --- END ENERGY MEASUREMENT HOOK --- */
 
@@ -573,6 +587,11 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
 
   start_us = get_cur_time_us();
 
+  /* CPU and memory energy measurement totals for this calibration */
+  u64 cal_cpu_energy_total = 0;
+  u64 cal_mem_energy_total = 0;
+  u32 measured_runs = 0;
+
   for (afl->stage_cur = 0; afl->stage_cur < afl->stage_max; ++afl->stage_cur) {
 
     if (unlikely(afl->debug)) {
@@ -586,6 +605,15 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
     (void)write_to_testcase(afl, (void **)&use_mem, q->len, 1);
 
     fault = fuzz_run_target(afl, &afl->fsrv, use_tmout);
+
+    /* update the total energy spend in calibration after each execution.
+       0 µJ is a valid reading (below RAPL resolution), ENERGY_INVALID means
+       the preload never wrote — last_run_energy_valid distinguishes the two. */
+    if (afl->last_run_energy_valid) {
+      cal_cpu_energy_total += afl->last_run_cpu_energy;   /* includes 0 */
+      cal_mem_energy_total += afl->last_run_mem_energy;
+      measured_runs++;
+    }
 
     // update the time spend in calibration after each execution, as those may
     // be slow
@@ -679,10 +707,20 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
   afl->total_cal_us += diff_us;
   afl->total_cal_cycles += afl->stage_max;
 
+  /* update the energy cost per calibration phase for this seed.
+     Divide by stage_max (all runs), not measured_runs — 0 µJ runs
+     are real data points meaning "below RAPL resolution". */
+  q->energy_measured = (measured_runs > 0);
+  q->cpu_energy_cost = q->energy_measured
+      ? cal_cpu_energy_total / afl->stage_max : 0;
+  q->mem_energy_cost = q->energy_measured
+      ? cal_mem_energy_total / afl->stage_max : 0;
+
   // Add total energy for mem and cpu
   afl->total_cpu_energy += q->cpu_energy_cost;
   afl->total_mem_energy += q->mem_energy_cost;
-
+  afl->total_energy_entries += 1;
+  
   // check if this is min or max cpu/mem energy
   if (q->cpu_energy_cost) {
 
@@ -697,7 +735,7 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
       afl->max_cpu_energy = q->cpu_energy_cost;
 
     }
-   }
+  }
    
   if (q->mem_energy_cost) {
    
