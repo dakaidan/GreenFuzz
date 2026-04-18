@@ -123,8 +123,7 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
   afl->last_run_mem_energy   = 0;
   afl->last_run_energy_valid = 0;
 
-  if (afl->stage_name &&
-      strcmp(afl->stage_name, "calibration") == 0) {
+  if (afl->in_calibration == 1) {
 
     if (afl->cpu_energy_map) {
       u64 cpu_raw = *((volatile u64 *)afl->cpu_energy_map);
@@ -513,6 +512,7 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
   ++q->cal_failed;
 
   afl->stage_name = "calibration";
+  afl->in_calibration = 1;
   afl->stage_max = afl->afl_env.afl_cal_fast ? CAL_CYCLES_FAST : CAL_CYCLES;
 
   /* Make sure the forkserver is up before we do anything, and let's not
@@ -711,47 +711,41 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
      Divide by stage_max (all runs), not measured_runs — 0 µJ runs
      are real data points meaning "below RAPL resolution". */
   q->energy_measured = (measured_runs > 0);
-  q->cpu_energy_cost = q->energy_measured
-      ? cal_cpu_energy_total / afl->stage_max : 0;
-  q->mem_energy_cost = q->energy_measured
-      ? cal_mem_energy_total / afl->stage_max : 0;
+  if (q->energy_measured) {
+    q->cpu_energy_cost = cal_cpu_energy_total / measured_runs;
+    q->mem_energy_cost = cal_mem_energy_total / measured_runs;
+  } else {
+    q->cpu_energy_cost = 0;
+    q->mem_energy_cost = 0;
+  }
 
-  // Add total energy for mem and cpu
-  afl->total_cpu_energy += q->cpu_energy_cost;
-  afl->total_mem_energy += q->mem_energy_cost;
-  afl->total_energy_entries += 1;
-  
+
   // check if this is min or max cpu/mem energy
-  if (q->cpu_energy_cost) {
-
-    if (unlikely(!afl->min_cpu_energy) || unlikely(q->cpu_energy_cost < afl->min_cpu_energy)) {
-
-      afl->min_cpu_energy = q->cpu_energy_cost;
-
+  if (q->energy_measured) {
+  u64 total_e;
+    if (UINT64_MAX - q->cpu_energy_cost < q->mem_energy_cost) {
+      total_e = UINT64_MAX;
+    } else {
+      total_e = q->cpu_energy_cost + q->mem_energy_cost;
     }
 
-    if (unlikely(!afl->max_cpu_energy) || unlikely(q->cpu_energy_cost > afl->max_cpu_energy)) {
+    // Add total energy for mem and cpu
+    afl->total_cpu_energy += q->cpu_energy_cost;
+    afl->total_mem_energy += q->mem_energy_cost;
+    afl->total_energy_entries += 1;
 
-      afl->max_cpu_energy = q->cpu_energy_cost;
-
+    if (!afl->have_total_energy_bounds || total_e < afl->min_total_energy) {
+      afl->min_total_energy = total_e;
     }
+
+    if (!afl->have_total_energy_bounds || total_e > afl->max_total_energy) {
+      afl->max_total_energy = total_e;
+    }
+
+    afl->have_total_energy_bounds = 1;
   }
    
-  if (q->mem_energy_cost) {
-   
-     if (unlikely(!afl->min_mem_energy) || unlikely(q->mem_energy_cost < afl->min_mem_energy)) {
-
-      afl->min_mem_energy = q->mem_energy_cost;
-
-    }
-
-    if (unlikely(!afl->max_mem_energy) || unlikely(q->mem_energy_cost > afl->max_mem_energy)) {
-
-      afl->max_mem_energy = q->mem_energy_cost;
-
-    }
-
-  }
+  
 
   /* OK, let's collect some stats about the performance of this test case.
      This is used for fuzzing air time calculations in calculate_score(). */
@@ -787,6 +781,7 @@ u8 calibrate_case(afl_state_t *afl, struct queue_entry *q, u8 *use_mem,
 
 abort_calibration:
 
+  afl->in_calibration = 0;
   afl->afl_env.afl_post_process_keep_original =
       saved_afl_post_process_keep_original;
 
@@ -810,6 +805,7 @@ abort_calibration:
   afl->stage_name = old_sn;
   afl->stage_cur = old_sc;
   afl->stage_max = old_sm;
+
 
   if (!first_run) { show_stats(afl); }
 

@@ -793,22 +793,24 @@ void destroy_queue(afl_state_t *afl) {
 }
 
 static inline double energy_bonus(afl_state_t *afl, u64 e) {
-  u64 eMin = afl->min_cpu_energy + afl->min_mem_energy;
-  u64 eMax = afl->max_cpu_energy + afl->max_mem_energy;
-  if (!e || eMax <= eMin) return 1.0;
 
-  /* LOG-min–max norm to make it more stable in heavy-tail distributions */
-  double num = log1p((double)((e > eMin) ? (e - eMin) : 0));
-  double den = log1p((double)(eMax - eMin));
-  double norm = num / den;
-  if (norm < 0.0) norm = 0.0;
-  if (norm > 1.0) norm = 1.0;
+  if (!afl->have_total_energy_bounds || afl->max_total_energy <= afl->min_total_energy) {
+    return 1.0;
+  }
 
-  /* Pivot 0.5: norm<0.5 award, norm>0.5 punish */
-  const double a = 0.25;  
-  double bonus = 1.0 + a * (0.5 - norm);
+  if (e < afl->min_total_energy) e = afl->min_total_energy;
+  if (e > afl->max_total_energy) e = afl->max_total_energy;
 
-  if (bonus < 0.8)  bonus = 0.8;
+  /* LOG min-max normalization, as in your current design idea,
+     but over total energy only. */
+  double num = log1p((double)(e - afl->min_total_energy));
+  double den = log1p((double)(afl->max_total_energy - afl->min_total_energy));
+  double norm = (den > 0.0) ? (num / den) : 0.0;
+
+  /* map to [1.25, 0.80] = [5/4, 4/5] */
+  double bonus = 1.25 - 0.45 * norm;
+
+  if (bonus < 0.80) bonus = 0.80;
   if (bonus > 1.25) bonus = 1.25;
 
   return bonus;
@@ -857,22 +859,14 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
 
   }
 
-  if (q->cpu_energy_cost || q->mem_energy_cost) {
-    double q_bonus = 1.0;
-    // u64 max_possible_value = (UINT64_MAX >> 2);
-    // u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
-    // if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
-    //   energy = max_possible_value;
-    // }
-    // if (energy > max_possible_value) {
-    //   energy = max_possible_value;
-    // }
-    // // normalise to 0..10000
-    // u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
-    // fav_factor += normalised_energy;
-
-    /* normalise to min-max value between 0 and 1 */
-    u64 e = q->cpu_energy_cost + q->mem_energy_cost;
+  if (q->energy_measured) {
+    u64 e;
+    double q_bonus;
+    if (UINT64_MAX - q->cpu_energy_cost < q->mem_energy_cost) {
+      e = UINT64_MAX;
+    } else {
+      e = q->cpu_energy_cost + q->mem_energy_cost;
+    }
     q_bonus = energy_bonus(afl, e);
     fav_factor = (u64)((double)fav_factor / q_bonus);
     
@@ -918,10 +912,18 @@ void update_bitmap_score(afl_state_t *afl, struct queue_entry *q,
 
           }
 
-          if (afl->top_rated[i]->cpu_energy_cost || afl->top_rated[i]->mem_energy_cost) {
-            double top_bonus = 1.0;
 
-            u64 e = afl->top_rated[i]->cpu_energy_cost + afl->top_rated[i]->mem_energy_cost;
+
+          if (afl->top_rated[i]->energy_measured) {
+            u64 e;
+            double top_bonus;
+
+            if (UINT64_MAX - afl->top_rated[i]->cpu_energy_cost < afl->top_rated[i]->mem_energy_cost) {
+              e = UINT64_MAX;
+            } else {
+              e = afl->top_rated[i]->cpu_energy_cost + afl->top_rated[i]->mem_energy_cost;
+            }
+
             top_bonus = energy_bonus(afl, e);
             top_rated_fav_factor = (u64)((double)top_rated_fav_factor / top_bonus);
           }
@@ -1171,22 +1173,14 @@ void update_bitmap_rescore(afl_state_t *afl, struct queue_entry *q, u32 index) {
 
   }
 
-  if (q->cpu_energy_cost || q->mem_energy_cost) {
-    double q_bonus = 1.0;
-    // u64 max_possible_value = (UINT64_MAX >> 2);
-    // u64 energy = q->cpu_energy_cost + q->mem_energy_cost;
-    // if (energy < q->cpu_energy_cost || energy < q->mem_energy_cost) {
-    //   energy = max_possible_value;
-    // }
-    // if (energy > max_possible_value) {
-    //   energy = max_possible_value;
-    // }
-    // // normalise to 0..10000
-    // u64 normalised_energy = (energy * 10000ULL + (max_possible_value / 2)) / max_possible_value;
-    // fav_factor += normalised_energy;
-
-    /* normalise to min-max value between 0 and 1 */
-    u64 e = q->cpu_energy_cost + q->mem_energy_cost;
+  if (q->energy_measured) {
+    u64 e;
+    double q_bonus;
+    if (UINT64_MAX - q->cpu_energy_cost < q->mem_energy_cost) {
+      e = UINT64_MAX;
+    } else {
+      e = q->cpu_energy_cost + q->mem_energy_cost;
+    }
     q_bonus = energy_bonus(afl, e);
     fav_factor = (u64)((double)fav_factor / q_bonus);
     
@@ -1224,10 +1218,16 @@ void update_bitmap_rescore(afl_state_t *afl, struct queue_entry *q, u32 index) {
 
     }
 
-    if (afl->top_rated[i]->cpu_energy_cost || afl->top_rated[i]->mem_energy_cost) {
-      double top_bonus = 1.0;
+    if (afl->top_rated[i]->energy_measured) {
+      u64 e;
+      double top_bonus;
 
-      u64 e = afl->top_rated[i]->cpu_energy_cost + afl->top_rated[i]->mem_energy_cost;
+      if (UINT64_MAX - afl->top_rated[i]->cpu_energy_cost < afl->top_rated[i]->mem_energy_cost) {
+        e = UINT64_MAX;
+      } else {
+        e = afl->top_rated[i]->cpu_energy_cost + afl->top_rated[i]->mem_energy_cost;
+      }
+
       top_bonus = energy_bonus(afl, e);
       top_rated_fav_factor = (u64)((double)top_rated_fav_factor / top_bonus);
     }
@@ -1556,50 +1556,33 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
   }
 
   /* --- BEGIN ENERGY HEURISTIC --- */
-
-  double cpu_multiplier = ({
-    double result;
-    if (!q->energy_measured) {
-      result = 1.0;   /* genuinely no measurement — neutral */
-    } else if (afl->max_cpu_energy == afl->min_cpu_energy) {
-      result = 1.0;
+  double energy_multiplier = 1.0;
+  if (q->energy_measured && afl->have_total_energy_bounds && afl->max_total_energy > afl->min_total_energy) {
+    u64 e;
+    
+    if (UINT64_MAX - q->cpu_energy_cost < q->mem_energy_cost) {
+      e = UINT64_MAX;
     } else {
-      double m = (0.2 - 5.0) / (double)(afl->max_cpu_energy - afl->min_cpu_energy);
-      double b = 5.0 - m * (double)afl->min_cpu_energy;
-      result = m * (double)q->cpu_energy_cost + b;
-      if (result < 0.2) result = 0.2;
-      if (result > 5.0) result = 5.0;
+      e = q->cpu_energy_cost + q->mem_energy_cost;
     }
-    result;
-  });
 
-  double mem_multiplier = ({
-    double result;
-    if (!q->energy_measured) {
-      result = 1.0;   /* genuinely no measurement — neutral */
-    } else if (afl->max_mem_energy == afl->min_mem_energy) {
-      result = 1.0;
-    } else {
-      double m = (0.2 - 5.0) / (double)(afl->max_mem_energy - afl->min_mem_energy);
-      double b = 5.0 - m * (double)afl->min_mem_energy;
-      result = m * (double)q->mem_energy_cost + b;
-      if (result < 0.2) result = 0.2;
-      if (result > 5.0) result = 5.0;
-    }
-    result;
-  });
+    if (e < afl->min_total_energy) e = afl->min_total_energy;
+    if (e > afl->max_total_energy) e = afl->max_total_energy;
 
-  perf_score = (u32)((double)perf_score * cpu_multiplier * mem_multiplier);
+    double norm = (double)(e - afl->min_total_energy) / (double)(afl->max_total_energy - afl->min_total_energy);
+
+    if (norm < 0.0) norm = 0.0;
+    if (norm > 1.0) norm = 1.0;
+    /* map to [5.0, 0.2] = [5x, 1/5x] */
+    energy_multiplier = 5.0 - 4.8 * norm;
+  }
+  
+
+  perf_score = (u32)((double)perf_score * energy_multiplier);
   /* Make sure that we don't go over limit. */ 
   if (perf_score > afl->havoc_max_mult * 100) perf_score = afl->havoc_max_mult * 100; 
   if (afl->schedule != COE && perf_score < 1) perf_score = 1;
 
-  // u64 energy_cost = q->cpu_energy_cost + q->mem_energy_cost;
-  // if (energy_cost > 0) {
-    // perf_score = (u32)(((u64)perf_score * 1000ULL) / energy_cost); // normalise the perf w.r.t energy cost
-    // perf_score = (u32)(alpha * perf_score - beta * energy_cost); // weighted combination of the perf and energy cost
-    // perf_score += 1;  // ensure that we always have at least 1 to avoid skips
-  // }
   /* --- END ENERGY HEURISTIC --- */
 
   return perf_score;

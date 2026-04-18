@@ -516,6 +516,10 @@ typedef struct afl_state {
   void *cpu_energy_map;                                       /* cpu energy map shm */
   void *mem_energy_map;                                      /* mem energy map shm */
 
+  u8  have_total_energy_bounds;        /* any measured total-energy bounds yet? */
+  u64 min_total_energy,                /* minimum measured total energy (uJ) */
+      max_total_energy;                /* maximum measured total energy (uJ) */
+
   u64 last_run_cpu_energy;           /* scratch: energy of the last fuzz_run_target() call */
   u64 last_run_mem_energy;           /* scratch: memory energy of the last fuzz_run_target() call */
   u8  last_run_energy_valid;         /* scratch: true if preload wrote a real value */
@@ -740,10 +744,10 @@ typedef struct afl_state {
   u128 total_mem_energy,                 /* Total memory energy              */
       total_cpu_energy;                  /* Total CPU energy                 */
 
-  u64 min_mem_energy,
-      max_mem_energy,
-      min_cpu_energy,
-      max_cpu_energy;                  /* min and max energy readings      */
+  // u64 min_mem_energy,
+  //     max_mem_energy,
+  //     min_cpu_energy,
+  //     max_cpu_energy;                  /* min and max energy readings      */
 
 #ifdef HAVE_AFFINITY
   s32 cpu_aff;                          /* Selected CPU core                */
