@@ -2,12 +2,6 @@
 set -euo pipefail
 
 # Prepares data/harfbuzz/public.zip seed corpus for fuzzing.
-#
-# Follows the FuzzBench harfbuzz_hb-shape-fuzzer build.sh pattern: pulls
-# fonts from the harfbuzz repo itself (public GitHub, no GCP / auth) and
-# packages them in the existing data/<target>/public.zip format used here
-# (SHA-1-named files at root, fuzzing-discovered fonts under regressions/).
-#
 # Source directories (from harfbuzz repo):
 #   Main corpus  -> test/shape/data/in-house/fonts
 #                   test/shape/data/aots/fonts
