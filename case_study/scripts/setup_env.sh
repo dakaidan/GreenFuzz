@@ -82,15 +82,15 @@ cmake --version
 #    exists), use it. Otherwise clone next to $START_DIR.
 # ============================================================================
 cd "$START_DIR"
-echo "[*] Cloning GreenFuzz (development branch)..."
+echo "[*] Cloning GreenFuzz (case-study branch)..."
 git clone https://github.com/dakaidan/GreenFuzz.git "$START_DIR/GreenFuzz"
 GREENFUZZ_ROOT="$START_DIR/GreenFuzz"
 
 
 cd "$GREENFUZZ_ROOT"
-git fetch origin development 2>/dev/null || true
-git checkout development 2>/dev/null || true
-git pull --ff-only origin development 2>/dev/null || true
+git fetch origin feat/case-study 2>/dev/null || true
+git checkout feat/case-study 2>/dev/null || true
+git pull --ff-only origin feat/case-study 2>/dev/null || true
 
 echo ""
 echo "================================================================"
@@ -112,8 +112,8 @@ fi
 echo "[+] GreenAFL runtime fuzzer: $GREENFUZZ_ROOT/AFLPlusPlus/afl-fuzz"
 
 echo "[*] (3/3) Building target fuzzers..."
-echo "    libpng, zlib, jsoncpp, libjpeg-turbo, harfbuzz"
-make -j"$NPROC" targets
+echo "    jsoncpp, libjpeg-turbo, harfbuzz"
+make -j"$NPROC" targets_memory_bound
 
 # ============================================================================
 # Summary

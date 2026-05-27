@@ -194,6 +194,14 @@ for i in range(params.nodeCount):
                                        command="sudo wget -O /local/grow_root.sh https://raw.githubusercontent.com/dakaidan/cloudlab-configs/refs/heads/main/scripts/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="chmod +x /local/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="sudo /local/grow_root.sh"))
+        # Bootstrap GreenFuzz: download + run setup_env.sh from feat/case-study.
+        # Output to /local/setup_env.log for post-boot inspection.
+        # NOTE: RAPL energy counters are unreliable in VMs; bare-metal (RawPC) preferred.
+        node.addService(pg.Execute(shell="bash",
+                                   command="sudo wget -O /local/setup_env.sh https://raw.githubusercontent.com/dakaidan/GreenFuzz/refs/heads/feat/case-study/case_study/scripts/setup_env.sh"))
+        node.addService(pg.Execute(shell="bash", command="sudo chmod +x /local/setup_env.sh"))
+        node.addService(pg.Execute(shell="bash",
+                                   command="sudo bash -c 'cd /local && bash /local/setup_env.sh > /local/setup_env.log 2>&1'"))
         if params.exclusiveVMs:
             node.exclusive = True
         pass
@@ -210,6 +218,13 @@ for i in range(params.nodeCount):
                                        command="sudo wget -O /local/grow_root.sh https://raw.githubusercontent.com/dakaidan/cloudlab-configs/refs/heads/main/scripts/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="sudo chmod +x /local/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="sudo /local/grow_root.sh"))
+        # Bootstrap GreenFuzz: download + run setup_env.sh from feat/case-study.
+        # Output to /local/setup_env.log for post-boot inspection.
+        node.addService(pg.Execute(shell="bash",
+                                   command="sudo wget -O /local/setup_env.sh https://raw.githubusercontent.com/dakaidan/GreenFuzz/refs/heads/feat/case-study/case_study/scripts/setup_env.sh"))
+        node.addService(pg.Execute(shell="bash", command="sudo chmod +x /local/setup_env.sh"))
+        node.addService(pg.Execute(shell="bash",
+                                   command="sudo bash -c 'cd /local && bash /local/setup_env.sh > /local/setup_env.log 2>&1'"))
         pass
 
     if params.osImage and params.osImage != "default":
