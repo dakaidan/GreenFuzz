@@ -102,6 +102,7 @@ check_afl:
 	@command -v afl-clang-fast >/dev/null 2>&1 || { \
 	  echo "ERROR: afl-clang-fast not found on PATH."; \
 	  echo "       Run case_study/scripts/setup_env.sh first."; \
+	  exit 1; \
 	}
 
 libpng: | check_afl
