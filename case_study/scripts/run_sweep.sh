@@ -3,7 +3,7 @@
 # Per-node Latin-Square sweep runner for GreenFuzz energy evaluation.
 #
 # Design: each node runs 6 cells (3 targets × 2 configs), in an order that
-# varies between nodes. This counteracts time-of-day thermal drift -- e.g.
+# varies between nodes. Minimise the effect of thermal drift -- e.g.
 # vanilla doesn't ALWAYS run first; it sometimes runs in the middle of the
 # campaign, sometimes at the end, while greenfuzz takes the other slot.
 #
@@ -18,12 +18,11 @@
 # Output layout:
 #   /local/sweep_node<N>_<datetime>/
 #     idle_baseline_start.txt
-#     idle_baseline_mid.txt          (after cell 3)
+#     idle_baseline_mid.txt         
 #     idle_baseline_end.txt
 #     manifest.tsv
-#     cell_<target>_<config>_pos<N>/   <- the per-cell artifact tree
-#     cell_<...>.log                    <- per-cell stdout/stderr
-#   /local/SWEEP_FINISHED                <- empty marker file (see below)
+#     cell_<target>_<config>_pos<N>/   
+#     cell_<...>.log                    
 #   /local/sweep_node<N>.tar.gz          <- final compressed archive
 
 set -euo pipefail
@@ -41,16 +40,13 @@ esac
 #
 # Verified balance properties:
 #   - Each (target, config) cell appears once per node (6 cells × 3 nodes = 18)
-#   - At every time-position (1..6) across nodes, all 3 targets are represented
-#   - At every time-position, V/G split is 2:1 or 1:2 (never 3:0)
 #   - Per-target V vs G mean position delta = 0.33 (nearly perfectly balanced)
 #
-# This counteracts any time-of-day or thermal drift bias that could otherwise
+# This can minismise the effect of thermal drift bias that could otherwise
 # make vanilla or greenfuzz look better just because it ran in cooler/hotter
 # conditions.
 #
 # Layout (V = vanilla, G = greenfuzz):
-#   pos:   1       2       3       4       5       6
 #   node0: json-V  json-G  ljpeg-V ljpeg-G hb-V    hb-G
 #   node1: ljpeg-G ljpeg-V hb-G    hb-V    json-G  json-V
 #   node2: hb-V    hb-G    json-V  json-G  ljpeg-V ljpeg-G
@@ -186,21 +182,6 @@ perf stat -a -I 1000 -e power/energy-pkg/,power/energy-ram/ \
     -o "$SWEEP_DIR/idle_baseline_end.txt" \
     -- sleep 60
 
-# ---------------------------------------------------------------------------
-# COMPRESSION + FLAG (the "flag file" feature)
-#
-# After the whole sweep finishes:
-#   1. tar.gz the entire sweep_<node>_<datetime>/ directory into a single
-#      portable archive (much easier to scp than a deep tree).
-#   2. Drop a TINY marker file at a well-known path: /local/SWEEP_FINISHED
-#
-# The marker file is the "flag". From your laptop, you can run a tiny
-# poller loop that checks for this flag every hour. When it appears,
-# the laptop knows the sweep is done and starts downloading the tar.gz
-# without needing to remember to check manually.
-#
-# The flag is a SIGNAL, not data. It just says "I'm done."
-# ---------------------------------------------------------------------------
 
 echo
 echo "[*] Compressing sweep results..."
@@ -208,9 +189,6 @@ ARCHIVE="/local/sweep_node${NODE_ID}.tar.gz"
 tar czf "$ARCHIVE" -C /local "$(basename "$SWEEP_DIR")"
 SIZE=$(du -h "$ARCHIVE" | cut -f1)
 
-# Drop the marker FLAG file — small empty file at a predictable path.
-# Polling from your laptop becomes a 1-liner:
-#   ssh node 'test -f /local/SWEEP_FINISHED && echo DONE'
 touch /local/SWEEP_FINISHED
 
 echo
@@ -220,9 +198,3 @@ echo "================================================================"
 echo "  Archive:        $ARCHIVE  ($SIZE)"
 echo "  Marker (flag):  /local/SWEEP_FINISHED"
 echo "  Manifest:       $MANIFEST"
-echo
-echo "  From your laptop, poll the flag and pull the archive:"
-echo "    while ! ssh user@<this-node-ip> 'test -f /local/SWEEP_FINISHED'; do"
-echo "      echo 'not yet, sleeping 1h'; sleep 3600;"
-echo "    done"
-echo "    scp user@<this-node-ip>:$ARCHIVE ./"
