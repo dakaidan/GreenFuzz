@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build script for libjpeg-turbo with AFL++ instrumentation.
-# Pattern follows scripts/build_jsoncpp.sh and scripts/build_libpng.sh.
-#
-# Memory-bound profile: DCT blocks, color conversion buffers, MCU output
-# buffers -- working set typically exceeds L2 for non-trivial JPEGs.
-# Strong candidate for GreenAFL DRAM-channel evaluation.
-
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR="$PROJECT_ROOT/build"
 TMP_BUILD="$OUT_DIR/tmp_libjpeg_turbo_build"
@@ -102,7 +95,7 @@ echo "[+] Built libjpeg static library:     $JPEG_LIB"
 echo "[+] Built libturbojpeg static library: $TJPEG_LIB"
 
 # -------------------------
-# Compile in-tree harness (fuzz/decompress.cc) and link
+# Compile harness (fuzz/decompress.cc) and link
 # -------------------------
 HARNESS_SRC="$TMP_BUILD/libjpeg-turbo/fuzz/decompress.cc"
 echo "[*] Compiling in-tree harness (fuzz/decompress.cc)..."
