@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build script for harfbuzz with AFL++ instrumentation, using harfbuzz's
-# own in-tree hb-shape-fuzzer harness (the canonical OSS-Fuzz / FuzzBench one).
-# Pattern follows scripts/build_jsoncpp.sh and scripts/build_libpng.sh.
-#
-# Memory-bound profile: pointer chasing through SFNT tables, GSUB/GPOS
-# lookup chains, glyph cache, scattered allocations. Different DRAM access
-# pattern from libjpeg-turbo (latency-bound vs. bandwidth-bound), giving
-# two complementary memory-bound data points for GreenAFL evaluation.
-
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR="$PROJECT_ROOT/build"
 TMP_BUILD="$OUT_DIR/tmp_harfbuzz_build"
@@ -60,10 +51,6 @@ fi
 
 # -------------------------
 # Build static libharfbuzz.a via CMake
-#
-# Disable optional system deps (freetype/glib/icu/graphite2) so the build
-# is self-contained, fast, and the energy measurement doesn't include
-# unrelated code paths. This matches FuzzBench's minimal config.
 # -------------------------
 BUILD_DIR="$TMP_BUILD/harfbuzz_build"
 rm -rf "$BUILD_DIR"
@@ -99,16 +86,7 @@ fi
 echo "[+] Built harfbuzz static library: $HB_LIB"
 
 # -------------------------
-# Compile the in-tree hb-shape-fuzzer harness
-#
-# The harness lives at test/fuzzing/hb-shape-fuzzer.cc and provides
-# LLVMFuzzerTestOneInput(). It transitively includes:
-#   - test/fuzzing/hb-shape-input.hh
-#   - test/fuzzing/hb-fuzzer.hh   (needs src/ on include path)
-#   - test/api/test-ot-face.c     (via relative #include "../api/test-ot-face.c")
-#
-# We compile WITHOUT -DHB_IS_IN_FUZZER, so the dummy `alloc_state` in
-# hb-fuzzer.hh is used (we don't need libFuzzer's failing-alloc.c hook).
+# Compile the hb-shape-fuzzer harness
 # -------------------------
 cd "$TMP_BUILD"
 
