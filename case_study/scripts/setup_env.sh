@@ -72,6 +72,10 @@ $APT update
 $APT install -y cmake
 cmake --version
 
+echo "[*] Installing monitoring utilities..."
+$APT install -y screen
+$APT install -y libtool
+
 echo "[*] Clone GreenFuzz..."
 cd "$START_DIR"
 echo "[*] Cloning GreenFuzz (case-study branch)..."
