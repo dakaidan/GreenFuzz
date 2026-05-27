@@ -36,9 +36,11 @@ preload_all: preload preload_afl preload_print preload_print_afl
 .PHONY: targets
 targets: libpng zlib jsoncpp libjpeg-turbo harfbuzz
 
+# Memory-bound case-study targets only (libjpeg-turbo + harfbuzz)
 .PHONY: targets_memory_bound
 targets_memory_bound: jsoncpp libjpeg-turbo harfbuzz
 
+# Prepare seed corpora for new targets (zips into data/<target>/public.zip)
 .PHONY: seeds
 seeds: seeds_libjpeg-turbo seeds_harfbuzz
 
@@ -82,7 +84,7 @@ $(BUILD_TESTS_DIR)/hello: $(TESTS_DIR)/hello.cpp | $(BUILD_TESTS_DIR)
 	$(CXX) $(CXXFLAGS) $(CFLAGS) -o $@ $^
 
 # =============================================================================
-# GreenAFL
+# GreenAFL-modified AFL++ (in-tree, used as RUNTIME fuzzer)
 # =============================================================================
 
 .PHONY: local_afl afl
@@ -93,15 +95,28 @@ afl: local_afl
 
 # =============================================================================
 # FUZZ TARGET BUILDS
+#
+# Each rule delegates to its dedicated build script.
+# The build scripts use `command -v afl-clang-fast` -- this finds the
+# SYSTEM-installed vanilla AFL++ at /usr/local/bin/afl-clang-fast that was
+# put there by case_study/scripts/setup_env.sh (Solution 1).
+#
+# If `make jsoncpp` fails with "No AFL compiler found":
+#   -> setup_env.sh was not run, OR `sudo make install` of upstream AFL++
+#      failed during setup. Re-run setup_env.sh.
 # =============================================================================
 
 .PHONY: libpng zlib jsoncpp libjpeg-turbo harfbuzz
 
+# Sanity check: vanilla afl-clang-fast must be on PATH (Solution 1).
+# Order-only prereq so it's checked once, not on every target.
 .PHONY: check_afl
 check_afl:
 	@command -v afl-clang-fast >/dev/null 2>&1 || { \
 	  echo "ERROR: afl-clang-fast not found on PATH."; \
 	  echo "       Run case_study/scripts/setup_env.sh first."; \
+	  echo "       It installs upstream AFL++ system-wide via 'sudo make install'."; \
+	  exit 1; \
 	}
 
 libpng: | check_afl
@@ -121,6 +136,7 @@ harfbuzz: | check_afl
 
 # =============================================================================
 # SEED CORPUS PREPARATION
+# Pull from public GitHub sources; no GCP / gsutil / auth required.
 # =============================================================================
 
 .PHONY: seeds_libjpeg-turbo seeds_harfbuzz
