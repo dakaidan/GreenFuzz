@@ -2,23 +2,30 @@
 
 set -e
 
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+
+APT="sudo -E apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
+
 START_DIR="$(pwd)"
 NPROC="$(nproc 2>/dev/null || echo 2)"
 
 
 echo "[*] Installing AFL++ dependencies..."
-sudo apt-get update
-sudo apt-get install -y build-essential python3-dev automake cmake git flex bison libglib2.0-dev libpixman-1-dev python3-setuptools cargo libgtk-3-dev
-sudo apt-get install -y lld-14 llvm-14 llvm-14-dev clang-14 || sudo apt-get install -y lld llvm llvm-dev clang
-sudo apt-get install -y gcc-$(gcc --version|head -n1|sed 's/\..*//'|sed 's/.* //')-plugin-dev libstdc++-$(gcc --version|head -n1|sed 's/\..*//'|sed 's/.* //')-dev
-sudo apt-get install -y ninja-build # for QEMU mode
-sudo apt-get install -y cpio libcapstone-dev # for Nyx mode
-sudo apt-get install -y wget curl # for Frida mode
-sudo apt-get install -y python3-pip # for Unicorn mode
+$APT update
+$APT install -y build-essential python3-dev automake cmake git flex bison libglib2.0-dev libpixman-1-dev python3-setuptools cargo libgtk-3-dev
+$APT install -y lld-14 llvm-14 llvm-14-dev clang-14 || $APT install -y lld llvm llvm-dev clang
+$APT install -y gcc-$(gcc --version|head -n1|sed 's/\..*//'|sed 's/.* //')-plugin-dev libstdc++-$(gcc --version|head -n1|sed 's/\..*//'|sed 's/.* //')-dev
+$APT install -y ninja-build # for QEMU mode
+$APT install -y cpio libcapstone-dev # for Nyx mode
+$APT install -y wget curl # for Frida mode
+$APT install -y python3-pip # for Unicorn mode
 
 echo "[*] Installing case-study target-specific dependencies..."
-sudo apt-get install -y nasm
-sudo apt-get install -y libarchive-dev
+$APT install -y nasm
+$APT install -y libarchive-dev
 
 echo "[*] Installing base AFL++"
 sudo mkdir -p /tmp/afl
@@ -49,7 +56,7 @@ echo "kernel.perf_event_paranoid=-1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
 echo "[*] Installing perf..."
-sudo apt-get install linux-tools-common linux-tools-generic linux-tools-`uname -r`
+$APT install -y linux-tools-common linux-tools-generic linux-tools-`uname -r`
 
 echo "[*] Installing CPPJoules..."
 cd "$START_DIR"
@@ -58,11 +65,11 @@ source ~/.bashrc || true
 sudo ldconfig
 
 echo "[*] Installing latest CMake (from kitware repo)..."
-sudo apt-get install -y apt-transport-https ca-certificates gnupg
+$APT install -y apt-transport-https ca-certificates gnupg
 wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
 sudo apt-add-repository -y "deb https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main" || true
-sudo apt-get update
-sudo apt-get install -y cmake
+$APT update
+$APT install -y cmake
 cmake --version
 
 echo "[*] Clone GreenFuzz..."
