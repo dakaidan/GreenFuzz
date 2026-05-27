@@ -1,16 +1,5 @@
 #!/usr/bin/env bash
 
-# Case-study environment setup for GreenFuzz
-# Workflow:
-#   1. Installs all system dependencies (build tools, LLVM, etc.)
-#   2. Installs UPSTREAM AFL++ system-wide (provides /usr/local/bin/afl-clang-fast
-#      used to instrument target binaries)
-#   3. Installs CPPJoules + latest cmake + perf
-#   4. System tuning (governor, RAPL perms, perf_event_paranoid)
-#   5. If not already inside a GreenFuzz checkout, clones it
-#   6. Builds GreenAFL-modified 
-
-
 set -e
 
 START_DIR="$(pwd)"
@@ -76,11 +65,7 @@ sudo apt-get update
 sudo apt-get install -y cmake
 cmake --version
 
-# ============================================================================
-#    Locate / clone GreenFuzz
-#    If we're already inside a GreenFuzz checkout (AFLPlusPlus/ subdir
-#    exists), use it. Otherwise clone next to $START_DIR.
-# ============================================================================
+echo "[*] Clone GreenFuzz..."
 cd "$START_DIR"
 echo "[*] Cloning GreenFuzz (case-study branch)..."
 git clone https://github.com/dakaidan/GreenFuzz.git "$START_DIR/GreenFuzz"
@@ -115,23 +100,6 @@ echo "[*] (3/3) Building target fuzzers..."
 echo "    jsoncpp, libjpeg-turbo, harfbuzz"
 make -j"$NPROC" targets_memory_bound
 
-# ============================================================================
-# Summary
-# ============================================================================
-echo ""
-echo "================================================================"
-echo "  Build complete."
-echo "================================================================"
-echo ""
-echo "AFL++ checkouts (Solution 1 — two side-by-side AFL++ trees):"
-echo "  Instrumentation (vanilla): $(which afl-clang-fast)"
-echo "  Runtime fuzzer (GreenAFL): $GREENFUZZ_ROOT/AFLPlusPlus/afl-fuzz"
-echo ""
-echo "Preload libs:"
-ls -1 "$GREENFUZZ_ROOT/build/"*.so 2>/dev/null | sed 's/^/  /'
-echo ""
-echo "Target fuzzers:"
-find "$GREENFUZZ_ROOT/build/" -maxdepth 1 -type f -executable -not -name "*.so" 2>/dev/null | sed 's/^/  /'
 echo ""
 echo "Next steps:"
 echo "  cd $GREENFUZZ_ROOT"
@@ -140,12 +108,7 @@ echo "  # Prepare new seed corpora (only if data/<target>/public.zip missing):"
 echo "  make seeds"
 echo ""
 echo "  # Run 3-rep 12h campaigns:"
-echo "  bash scripts/run_campaign.sh 3 12h build/jsoncpp_fuzzer       data/jsoncpp/public.zip       true false"
-echo "  bash scripts/run_campaign.sh 3 12h build/libjpeg_turbo_fuzzer data/libjpeg-turbo/public.zip true false"
-echo "  bash scripts/run_campaign.sh 3 12h build/harfbuzz_fuzzer      data/harfbuzz/public.zip      true false"
+echo "  bash scripts/run_campaign.sh 3 24h build/jsoncpp_fuzzer       data/jsoncpp/public.zip       true false"
+echo "  bash scripts/run_campaign.sh 3 24h build/libjpeg_turbo_fuzzer data/libjpeg-turbo/public.zip true false"
+echo "  bash scripts/run_campaign.sh 3 24h build/harfbuzz_fuzzer      data/harfbuzz/public.zip      true false"
 echo ""
-echo "Notes:"
-echo "  - perf_event_paranoid change is system-wide (no reboot needed)."
-echo "  - CPU governor reverts on reboot; rerun setup or re-apply manually."
-echo "  - For cleanest energy measurements, stop background services before"
-echo "    each campaign (display manager, snapd, browsers, etc.)."
