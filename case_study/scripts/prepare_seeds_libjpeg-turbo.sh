@@ -2,13 +2,7 @@
 set -euo pipefail
 
 # Prepares data/libjpeg-turbo/public.zip seed corpus for fuzzing.
-#
-# Follows the FuzzBench Dockerfile pattern exactly: pulls public seed
-# sources from GitHub (no GCP / gsutil / auth required) and packages them
-# matching the existing data/<target>/public.zip format used in this repo
-# (SHA-1-named files at root, bug regressions under regressions/).
-#
-# Sources (all public GitHub):
+# Sources:
 #   - github.com/libjpeg-turbo/seed-corpora   (afl-testcases/jpeg*, bugs/decompress*)
 #   - github.com/libjpeg-turbo/libjpeg-turbo  (testimages/*.jpg)
 #
