@@ -14,6 +14,10 @@ CORPUS_ZIP=$4
 LOCAL_FUZZ=${5:-false}
 LOCAL_CMIN=${6:-false}
 
+export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1
+export AFL_SKIP_CPUFREQ=1
+export AFL_NO_UI=1
+
 EXP_NAME="experiment_$(basename "$TARGET")_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$EXP_NAME"
 
