@@ -7,22 +7,10 @@
 # vanilla doesn't ALWAYS run first; it sometimes runs in the middle of the
 # campaign, sometimes at the end, while greenfuzz takes the other slot.
 #
-# Usage on a CloudLab node (run from /local/GreenFuzz):
-#   NODE_ID=0 bash per_node_sweep.sh   # on node0
-#   NODE_ID=1 bash per_node_sweep.sh   # on node1
-#   NODE_ID=2 bash per_node_sweep.sh   # on node2
-#
-# DURATION env var defaults to 24h per cell.
 # Total wall-clock per node: 6 × 24h = 6 days.
 #
 # Output layout:
 #   /local/sweep_node<N>_<datetime>/
-#     idle_baseline_start.txt
-#     idle_baseline_mid.txt         
-#     idle_baseline_end.txt
-#     manifest.tsv
-#     cell_<target>_<config>_pos<N>/   
-#     cell_<...>.log                    
 #   /local/sweep_node<N>.tar.gz          <- final compressed archive
 
 set -euo pipefail
