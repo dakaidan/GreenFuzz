@@ -1,62 +1,37 @@
 #!/usr/bin/env bash
 #
-# Per-node Latin-Square sweep runner for GreenFuzz energy evaluation.
+# Per-machine sweep runner for GreenFuzz energy evaluation.
 #
-# Design: each node runs 6 cells (3 targets × 2 configs), in an order that
-# varies between nodes. Minimise the effect of thermal drift -- e.g.
-# vanilla doesn't ALWAYS run first; it sometimes runs in the middle of the
-# campaign, sometimes at the end, while greenfuzz takes the other slot.
-#
-# Usage on a CloudLab node (run from /local/GreenFuzz):
-#   NODE_ID=0 bash per_node_sweep.sh   # on node0
-#   NODE_ID=1 bash per_node_sweep.sh   # on node1
-#   NODE_ID=2 bash per_node_sweep.sh   # on node2
-#
-# DURATION env var defaults to 24h per cell.
-# Total wall-clock per node: 6 × 24h = 6 days.
-#
+# DESIGN: R=4 replicates, 6 machines, 8 days.
+#   48 campaigns = 4 configs x 3 targets x 4 reps
+
 # Output layout:
-#   /local/sweep_node<N>_<datetime>/
-#     idle_baseline_start.txt
-#     idle_baseline_mid.txt         
-#     idle_baseline_end.txt
-#     manifest.tsv
-#     cell_<target>_<config>_pos<N>/   
-#     cell_<...>.log                    
-#   /local/sweep_node<N>.tar.gz          <- final compressed archive
+#   /local/sweep_m<N>_<datetime>/
+#   /local/sweep_m<N>.tar.gz                          
 
 set -euo pipefail
 
-NODE_ID="${NODE_ID:?must set NODE_ID env var (0, 1, or 2)}"
+NODE_ID="${NODE_ID:?must set NODE_ID env var (0..5 for machines M1..M6)}"
 DURATION="${DURATION:-24h}"
 
 case "$NODE_ID" in
-  0|1|2) ;;
-  *) echo "ERROR: NODE_ID must be 0, 1, or 2 (got: $NODE_ID)" >&2; exit 1 ;;
+  0|1|2|3|4|5) ;;
+  *) echo "ERROR: NODE_ID must be 0..5 (got: $NODE_ID)" >&2; exit 1 ;;
 esac
 
 # ---------------------------------------------------------------------------
-# Balanced cell ordering across the 3 nodes.
-#
-# Verified balance properties:
-#   - Each (target, config) cell appears once per node (6 cells × 3 nodes = 18)
-#   - Per-target V vs G mean position delta = 0.33 (nearly perfectly balanced)
-#
-# This can minismise the effect of thermal drift bias that could otherwise
-# make vanilla or greenfuzz look better just because it ran in cooler/hotter
-# conditions.
-#
-# Layout (V = vanilla, G = greenfuzz):
-#   node0: json-V  json-G  ljpeg-V ljpeg-G hb-V    hb-G
-#   node1: ljpeg-G ljpeg-V hb-G    hb-V    json-G  json-V
-#   node2: hb-V    hb-G    json-V  json-G  ljpeg-V ljpeg-G
+# Config codes V/B/L/G are mapped to c0/c1/c2/c3 below.
 # ---------------------------------------------------------------------------
+declare -A SCHEDULE
+SCHEDULE[0]="jsoncpp:V jsoncpp:B jsoncpp:L jsoncpp:G libjpeg_turbo:L libjpeg_turbo:G libjpeg_turbo:V libjpeg_turbo:B"
+SCHEDULE[1]="jsoncpp:B jsoncpp:L jsoncpp:G jsoncpp:V libjpeg_turbo:G libjpeg_turbo:V libjpeg_turbo:B libjpeg_turbo:L"
+SCHEDULE[2]="jsoncpp:L jsoncpp:G jsoncpp:V jsoncpp:B harfbuzz:V harfbuzz:B harfbuzz:L harfbuzz:G"
+SCHEDULE[3]="jsoncpp:G jsoncpp:V jsoncpp:B jsoncpp:L harfbuzz:B harfbuzz:L harfbuzz:G harfbuzz:V"
+SCHEDULE[4]="libjpeg_turbo:V libjpeg_turbo:B libjpeg_turbo:L libjpeg_turbo:G harfbuzz:L harfbuzz:G harfbuzz:V harfbuzz:B"
+SCHEDULE[5]="libjpeg_turbo:B libjpeg_turbo:L libjpeg_turbo:G libjpeg_turbo:V harfbuzz:G harfbuzz:V harfbuzz:B harfbuzz:L"
 
-# Format: "target:config"
-declare -A SEQUENCE
-SEQUENCE[0]="jsoncpp:vanilla jsoncpp:greenfuzz libjpeg_turbo:vanilla libjpeg_turbo:greenfuzz harfbuzz:vanilla harfbuzz:greenfuzz"
-SEQUENCE[1]="libjpeg_turbo:greenfuzz libjpeg_turbo:vanilla harfbuzz:greenfuzz harfbuzz:vanilla jsoncpp:greenfuzz jsoncpp:vanilla"
-SEQUENCE[2]="harfbuzz:vanilla harfbuzz:greenfuzz jsoncpp:vanilla jsoncpp:greenfuzz libjpeg_turbo:vanilla libjpeg_turbo:greenfuzz"
+# Code -> run_campaign.sh config token.
+declare -A CODE2CFG=( [V]=c0 [B]=c1 [L]=c2 [G]=c3 )
 
 declare -A CORPUS=(
   ["jsoncpp"]="data/jsoncpp/public.zip"
@@ -69,57 +44,60 @@ declare -A BINARY=(
   ["harfbuzz"]="build/harfbuzz_fuzzer"
 )
 
+SEQ=(${SCHEDULE[$NODE_ID]})
+MACHINE=$((NODE_ID + 1))
+
 HOST="$(hostname -s)"
-SWEEP_DIR="/local/sweep_node${NODE_ID}_${HOST}_$(date +%Y%m%d_%H%M%S)"
+SWEEP_DIR="/local/sweep_m${MACHINE}_${HOST}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$SWEEP_DIR"
 
 # Friendly log redirected to file so screen detach doesn't lose it
 exec > >(tee -a "$SWEEP_DIR/sweep.log") 2>&1
 
 echo "================================================================"
-echo "  Latin-square sweep, node $NODE_ID ($HOST)"
+echo "  Sweep machine M$MACHINE (NODE_ID=$NODE_ID, $HOST)"
 echo "  Sweep dir: $SWEEP_DIR"
-echo "  Duration per cell: $DURATION"
-echo "  Cell order:"
+echo "  Duration per cell: $DURATION   (8 cells -> 8 x $DURATION total)"
+echo "  Schedule (code -> config):"
 i=1
-for cell in ${SEQUENCE[$NODE_ID]}; do
-  echo "    [pos $i] $cell"
+for cell in "${SEQ[@]}"; do
+  t="${cell%:*}"; code="${cell#*:}"
+  echo "    [pos $i]  $t  $code -> ${CODE2CFG[$code]}"
   i=$((i+1))
 done
 echo "================================================================"
 
-# ---------------------------------------------------------------------------
-# Initial idle baseline (60s)
-# ---------------------------------------------------------------------------
-echo "[*] Measuring idle baseline at start (60s)..."
-perf stat -a -I 1000 -e power/energy-pkg/,power/energy-ram/ \
-    -o "$SWEEP_DIR/idle_baseline_start.txt" \
-    -- sleep 60
+idle_baseline() {
+  local label="$1"
+  echo "[*] Measuring idle baseline ($label, 60s)..."
+  perf stat -a -I 1000 -e power/energy-pkg/,power/energy-ram/ \
+      -o "$SWEEP_DIR/idle_baseline_${label}.txt" \
+      -- sleep 60
+}
+
+# Initial idle baseline
+idle_baseline start
 
 # Manifest header
 MANIFEST="$SWEEP_DIR/manifest.tsv"
-echo -e "position\tcell_dir\ttarget\tconfig\tstart\tend\tstatus" > "$MANIFEST"
+echo -e "machine\tposition\tunit\tcell_dir\ttarget\tcode\tconfig\tstart\tend\tstatus" > "$MANIFEST"
 
 # ---------------------------------------------------------------------------
 # Cell runner
 # ---------------------------------------------------------------------------
 
 run_cell() {
-  local position="$1" target="$2" config="$3"
-  local local_fuzz
-  case "$config" in
-    vanilla)   local_fuzz="false" ;;
-    greenfuzz) local_fuzz="true"  ;;
-    *) echo "Bad config: $config" >&2; return 1 ;;
-  esac
+  local position="$1" target="$2" code="$3"
+  local config="${CODE2CFG[$code]}"
+  local unit=$(( (position > 4) ? 2 : 1 ))
 
-  local cell_name="cell_${target}_${config}_pos${position}"
+  local cell_name="cell_${target}_${config}_u${unit}_pos${position}"
   local cell_start
   cell_start=$(date -Iseconds)
 
   echo
   echo "============================================================="
-  echo "  [pos $position/6]  $target / $config"
+  echo "  [M$MACHINE pos $position/8]  $target / $code ($config)  unit $unit"
   echo "  start: $cell_start"
   echo "============================================================="
 
@@ -129,7 +107,7 @@ run_cell() {
 
   local status="ok"
   if ! bash case_study/scripts/run_campaign.sh 1 "$DURATION" \
-       "${BINARY[$target]}" "${CORPUS[$target]}" "$local_fuzz" false \
+       "${BINARY[$target]}" "${CORPUS[$target]}" "$config" false \
        > "$SWEEP_DIR/${cell_name}.log" 2>&1; then
     status="FAIL"
     echo "[!] $cell_name FAILED (see ${cell_name}.log)"
@@ -148,44 +126,31 @@ run_cell() {
 
   local cell_end
   cell_end=$(date -Iseconds)
-  echo -e "${position}\t${cell_name}\t${target}\t${config}\t${cell_start}\t${cell_end}\t${status}" >> "$MANIFEST"
+  echo -e "${MACHINE}\t${position}\t${unit}\t${cell_name}\t${target}\t${code}\t${config}\t${cell_start}\t${cell_end}\t${status}" >> "$MANIFEST"
   echo "[+] $cell_name done: $status  end: $cell_end"
 }
 
 # ---------------------------------------------------------------------------
-# Run the 6 cells for this node, in the assigned latin-square order
+# Run the 8 cells, with an idle drift check at the unit boundary (day 4/5).
 # ---------------------------------------------------------------------------
 
 position=1
-for cell in ${SEQUENCE[$NODE_ID]}; do
+for cell in "${SEQ[@]}"; do
   target="${cell%:*}"
-  config="${cell#*:}"
+  code="${cell#*:}"
 
-  # Mid-sweep idle baseline (after 3 cells = ~halfway through)
-  if [ "$position" -eq 4 ]; then
-    echo "[*] Measuring idle baseline at midpoint (60s)..."
-    perf stat -a -I 1000 -e power/energy-pkg/,power/energy-ram/ \
-        -o "$SWEEP_DIR/idle_baseline_mid.txt" \
-        -- sleep 60
-  fi
+  if [ "$position" -eq 5 ]; then idle_baseline mid; fi
 
-  run_cell "$position" "$target" "$config"
+  run_cell "$position" "$target" "$code"
   position=$((position+1))
 done
 
-# ---------------------------------------------------------------------------
 # End-of-sweep idle baseline (drift check)
-# ---------------------------------------------------------------------------
-echo
-echo "[*] Measuring idle baseline at end (60s)..."
-perf stat -a -I 1000 -e power/energy-pkg/,power/energy-ram/ \
-    -o "$SWEEP_DIR/idle_baseline_end.txt" \
-    -- sleep 60
-
+idle_baseline end
 
 echo
 echo "[*] Compressing sweep results..."
-ARCHIVE="/local/sweep_node${NODE_ID}.tar.gz"
+ARCHIVE="/local/sweep_m${MACHINE}.tar.gz"
 tar czf "$ARCHIVE" -C /local "$(basename "$SWEEP_DIR")"
 SIZE=$(du -h "$ARCHIVE" | cut -f1)
 
@@ -193,7 +158,7 @@ touch /local/SWEEP_FINISHED
 
 echo
 echo "================================================================"
-echo "  SWEEP FINISHED"
+echo "  SWEEP FINISHED (machine M$MACHINE)"
 echo "================================================================"
 echo "  Archive:        $ARCHIVE  ($SIZE)"
 echo "  Marker (flag):  /local/SWEEP_FINISHED"

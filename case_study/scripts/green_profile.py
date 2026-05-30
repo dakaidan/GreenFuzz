@@ -27,6 +27,15 @@ pc.defineParameter("nodeCount", "Number of Nodes", portal.ParameterType.INTEGER,
                    longDescription="If you specify more then one node, " +
                                    "we will create a lan for you.")
 
+# URL of the setup_env.sh bootstrap script to download and run on each node.
+# Override this to point at your own fork/branch when you have a different setup.
+pc.defineParameter("setupUrl", "Setup script URL",
+                   portal.ParameterType.STRING,
+                   "https://raw.githubusercontent.com/dakaidan/GreenFuzz/refs/heads/feat/case-study2/case_study/scripts/setup_env.sh",
+                   longDescription="Raw URL of the setup_env.sh script that bootstraps GreenFuzz on each " +
+                                   "node. It is downloaded to /local/setup_env.sh and run at boot, with output " +
+                                   "logged to /local/setup_env.log. Point this at your own fork/branch if needed.")
+
 # Pick your OS.
 imageList = [
     ('default', 'Default Image'),
@@ -194,11 +203,11 @@ for i in range(params.nodeCount):
                                        command="sudo wget -O /local/grow_root.sh https://raw.githubusercontent.com/dakaidan/cloudlab-configs/refs/heads/main/scripts/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="chmod +x /local/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="sudo /local/grow_root.sh"))
-        # Bootstrap GreenFuzz: download + run setup_env.sh from feat/case-study.
+        # Bootstrap GreenFuzz: download + run the user-specified setup_env.sh.
         # Output to /local/setup_env.log for post-boot inspection.
         # NOTE: RAPL energy counters are unreliable in VMs; bare-metal (RawPC) preferred.
         node.addService(pg.Execute(shell="bash",
-                                   command="sudo wget -O /local/setup_env.sh https://raw.githubusercontent.com/dakaidan/GreenFuzz/refs/heads/feat/case-study/case_study/scripts/setup_env.sh"))
+                                   command="sudo wget -O /local/setup_env.sh " + params.setupUrl))
         node.addService(pg.Execute(shell="bash", command="sudo chmod +x /local/setup_env.sh"))
         node.addService(pg.Execute(shell="bash",
                                    command="sudo bash -c 'cd /local && bash /local/setup_env.sh > /local/setup_env.log 2>&1'"))
@@ -218,10 +227,10 @@ for i in range(params.nodeCount):
                                        command="sudo wget -O /local/grow_root.sh https://raw.githubusercontent.com/dakaidan/cloudlab-configs/refs/heads/main/scripts/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="sudo chmod +x /local/grow_root.sh"))
             node.addService(pg.Execute(shell="sh", command="sudo /local/grow_root.sh"))
-        # Bootstrap GreenFuzz: download + run setup_env.sh from feat/case-study.
+        # Bootstrap GreenFuzz: download + run the user-specified setup_env.sh.
         # Output to /local/setup_env.log for post-boot inspection.
         node.addService(pg.Execute(shell="bash",
-                                   command="sudo wget -O /local/setup_env.sh https://raw.githubusercontent.com/dakaidan/GreenFuzz/refs/heads/feat/case-study/case_study/scripts/setup_env.sh"))
+                                   command="sudo wget -O /local/setup_env.sh " + params.setupUrl))
         node.addService(pg.Execute(shell="bash", command="sudo chmod +x /local/setup_env.sh"))
         node.addService(pg.Execute(shell="bash",
                                    command="sudo bash -c 'cd /local && bash /local/setup_env.sh > /local/setup_env.log 2>&1'"))

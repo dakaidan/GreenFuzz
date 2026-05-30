@@ -520,6 +520,10 @@ typedef struct afl_state {
   u64 min_total_energy,                /* minimum measured total energy (uJ) */
       max_total_energy;                /* maximum measured total energy (uJ) */
 
+  u8  energy_no_decision;              /* keep measuring energy but do NOT
+                                          let it influence scoring/favoring
+                                          (set via AFL_ENERGY_NO_DECISION) */
+
   u64 last_run_cpu_energy;           /* scratch: energy of the last fuzz_run_target() call */
   u64 last_run_mem_energy;           /* scratch: memory energy of the last fuzz_run_target() call */
   u8  last_run_energy_valid;         /* scratch: true if preload wrote a real value */

@@ -794,6 +794,10 @@ void destroy_queue(afl_state_t *afl) {
 
 static inline double energy_bonus(afl_state_t *afl, u64 e) {
 
+  /* C2: measurement on, decision off -> neutral bonus (covers all
+     update_bitmap_score() favoring call sites at once). */
+  if (afl->energy_no_decision) { return 1.0; }
+
   if (!afl->have_total_energy_bounds || afl->max_total_energy <= afl->min_total_energy) {
     return 1.0;
   }
@@ -1557,7 +1561,8 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
   /* --- BEGIN ENERGY HEURISTIC --- */
   double energy_multiplier = 1.0;
-  if (q->energy_measured && afl->have_total_energy_bounds && afl->max_total_energy > afl->min_total_energy) {
+  if (!afl->energy_no_decision &&
+      q->energy_measured && afl->have_total_energy_bounds && afl->max_total_energy > afl->min_total_energy) {
     u64 e;
     
     if (UINT64_MAX - q->cpu_energy_cost < q->mem_energy_cost) {

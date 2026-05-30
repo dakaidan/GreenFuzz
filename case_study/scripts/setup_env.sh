@@ -78,15 +78,15 @@ $APT install -y libtool
 
 echo "[*] Clone GreenFuzz..."
 cd "$START_DIR"
-echo "[*] Cloning GreenFuzz (case-study branch)..."
+echo "[*] Cloning GreenFuzz (case-study2 branch)..."
 git clone https://github.com/dakaidan/GreenFuzz.git "$START_DIR/GreenFuzz"
 GREENFUZZ_ROOT="$START_DIR/GreenFuzz"
 
 
 cd "$GREENFUZZ_ROOT"
-git fetch origin feat/case-study 2>/dev/null || true
-git checkout feat/case-study 2>/dev/null || true
-git pull --ff-only origin feat/case-study 2>/dev/null || true
+git fetch origin feat/case-study2 2>/dev/null || true
+git checkout feat/case-study2 2>/dev/null || true
+git pull --ff-only origin feat/case-study2 2>/dev/null || true
 
 echo ""
 echo "================================================================"

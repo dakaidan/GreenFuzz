@@ -614,6 +614,13 @@ int main(int argc, char **argv_orig, char **envp) {
   read_afl_environment(afl, envp);
   if (afl->shm.map_size) { afl->fsrv.map_size = afl->shm.map_size; }
 
+  /* when energy_no_decision set, energy is still measured but the energy-aware heuristics in calculate_score() and
+     update_bitmap_score() are neutralised (multipliers forced to 1.0) to isolates energy measurement cost from the heuristic's behaviour. */
+  afl->energy_no_decision = !!getenv("AFL_ENERGY_NO_DECISION");
+  if (afl->energy_no_decision) {
+    OKF("AFL_ENERGY_NO_DECISION set: measuring energy but NOT acting on it.");
+  }
+
   if (afl->afl_env.afl_forksrv_uid_set) {
 
     afl->fsrv.uid_set = 1;
