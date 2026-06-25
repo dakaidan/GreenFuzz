@@ -62,10 +62,32 @@ for i in $(seq 1 "$REPS"); do
         CMD="afl-fuzz -i $REP_DIR/in -o $REP_DIR/out -- $TARGET @@"
     fi
 
+    CPU_ZONE=$(grep -l "x86_pkg_temp" /sys/class/thermal/thermal_zone*/type | sed 's/type/temp/')
+    (
+        echo "Timestamp | Temperature" > "$REP_DIR/temperature.txt"
+        while true; do
+            # Read CPU thermal zone 0 (divided by 1000 converts milli-Celsius to Celsius)
+            if [ -n "$CPU_ZONE" ] && [ -f "$CPU_ZONE" ]; then
+                RAW_TEMP=$(cat "$CPU_ZONE")
+                TEMP_C=$((RAW_TEMP / 1000))
+            else
+                TEMP_C="N/A"
+            fi
+            
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | ${TEMP_C}°C" >> "$REP_DIR/temperature.txt"
+            sleep 10  # Adjust interval here (in seconds)
+        done
+    ) &
+    TEMP_PID=$! 
+
+
     perf stat -a -I 1000 \
         -e power/energy-pkg/,power/energy-ram/,instructions,cycles,LLC-loads,LLC-load-misses \
         -o "$REP_DIR/perf_stat.txt" \
         timeout "$TIMEOUT" bash -c "$CMD"
+
+    kill "$TEMP_PID" 2>/dev/null
+    wait "$TEMP_PID" 2>/dev/null 
 done
 
 echo "[*] Experiment finished: $EXP_NAME"
