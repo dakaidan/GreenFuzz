@@ -12,6 +12,7 @@ APT="sudo -E apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--
 START_DIR="$(pwd)"
 NPROC="$(nproc 2>/dev/null || echo 2)"
 
+sudo apt install zip
 
 echo "[*] Installing AFL++ dependencies..."
 $APT update
