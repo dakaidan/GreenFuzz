@@ -30,7 +30,7 @@ $APT install -y libarchive-dev
 
 echo "[*] Installing base AFL++"
 sudo mkdir -p /tmp/afl
-sudo chown "$USER":"$USER" /tmp/afl
+sudo chown "$USER" /tmp/afl
 git clone https://github.com/AFLplusplus/AFLplusplus
 cd AFLplusplus
 make distrib

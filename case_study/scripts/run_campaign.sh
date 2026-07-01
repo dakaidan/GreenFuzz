@@ -33,7 +33,7 @@ mkdir -p "$MIN_CORPUS"
 echo "[*] Minimising corpus..."
 if [[ "$LOCAL_CMIN" == "true" ]]; then
     echo "[*] Using local AFL++ afl-cmin with energy options"
-    AFL_PRELOAD="build/energy_print.so" python3 AFLPlusPlus/afl-cmin.py \
+    AFL_PRELOAD="build/energy_print.so" python3 case_study/scripts/AFLplusplus/afl-cmin.py \
         --energy-first --no-batch \
         -i "$INIT_CORPUS" \
         -o "$MIN_CORPUS" \
@@ -56,7 +56,7 @@ for i in $(seq 1 "$REPS"); do
     echo "[*] Running repetition $i in $REP_DIR"
 
     if [[ "$LOCAL_FUZZ" == "true" ]]; then
-        CMD="AFLPlusPlus/afl-fuzz -i $REP_DIR/in -o $REP_DIR/out -- $TARGET @@"
+        CMD="case_study/scripts/AFLplusplus/afl-fuzz -i $REP_DIR/in -o $REP_DIR/out -- $TARGET @@"
         CMD="AFL_PRELOAD=build/energy_afl.so $CMD"
     else
         CMD="afl-fuzz -i $REP_DIR/in -o $REP_DIR/out -- $TARGET @@"
